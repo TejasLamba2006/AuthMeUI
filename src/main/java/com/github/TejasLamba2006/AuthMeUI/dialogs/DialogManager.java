@@ -20,6 +20,9 @@ public class DialogManager {
         this.rulesBuilder = new RulesDialogBuilder(plugin, settings);
     }
 
+    // ==================== Player-based methods (for in-game use)
+    // ====================
+
     public Dialog createLoginDialog(Player player) {
         return loginBuilder.construct(player);
     }
@@ -51,6 +54,64 @@ public class DialogManager {
             }
         }
     }
+
+    // ==================== Audience-based methods (for configuration phase)
+    // ====================
+
+    /**
+     * Create a login dialog for use with Audience (e.g., during configuration
+     * phase).
+     *
+     * @param playerName the name of the player (for potential future use)
+     * @return the constructed dialog
+     */
+    public Dialog createLoginDialogForAudience(String playerName) {
+        return loginBuilder.construct(null);
+    }
+
+    /**
+     * Create a login dialog with error message for use with Audience.
+     *
+     * @param playerName   the name of the player
+     * @param errorMessage the error message to display
+     * @return the constructed dialog
+     */
+    public Dialog createLoginDialogForAudience(String playerName, Component errorMessage) {
+        return loginBuilder.construct(null, errorMessage);
+    }
+
+    /**
+     * Create a registration dialog for use with Audience.
+     *
+     * @param playerName the name of the player
+     * @return the constructed dialog
+     */
+    public Dialog createRegistrationDialogForAudience(String playerName) {
+        return registerBuilder.construct(null);
+    }
+
+    /**
+     * Create a registration dialog with error message for use with Audience.
+     *
+     * @param playerName   the name of the player
+     * @param errorMessage the error message to display
+     * @return the constructed dialog
+     */
+    public Dialog createRegistrationDialogForAudience(String playerName, Component errorMessage) {
+        return registerBuilder.construct(null, errorMessage);
+    }
+
+    /**
+     * Create a rules dialog for use with Audience.
+     *
+     * @param playerName the name of the player
+     * @return the constructed dialog
+     */
+    public Dialog createRulesDialogForAudience(String playerName) {
+        return rulesBuilder.construct(null);
+    }
+
+    // ==================== Builder accessors ====================
 
     public LoginDialogBuilder getLoginBuilder() {
         return loginBuilder;

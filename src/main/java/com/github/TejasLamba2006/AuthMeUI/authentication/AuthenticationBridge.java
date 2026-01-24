@@ -83,6 +83,41 @@ public class AuthenticationBridge {
         }
     }
 
+    /**
+     * Attempt login using only the player name (for configuration phase).
+     * This only validates the password but does NOT force login since the player
+     * isn't in-game yet.
+     *
+     * @param playerName the player's name
+     * @param password   the password to check
+     * @return the authentication result
+     */
+    public AuthResult attemptLoginByName(String playerName, String password) {
+        if (!isConnected()) {
+            return AuthResult.SERVICE_UNAVAILABLE;
+        }
+
+        if (password == null || password.isBlank()) {
+            return AuthResult.EMPTY_PASSWORD;
+        }
+
+        if (!isPlayerRegistered(playerName)) {
+            return AuthResult.NOT_REGISTERED;
+        }
+
+        try {
+            if (authMeApi.checkPassword(playerName, password)) {
+                // Note: We don't call forceLogin here because the player isn't in-game yet.
+                // The player will be authenticated when they complete the configuration phase.
+                return AuthResult.SUCCESS;
+            }
+            return AuthResult.INVALID_PASSWORD;
+        } catch (Exception ex) {
+            plugin.getLogger().log(Level.WARNING, "Login attempt failed for " + playerName, ex);
+            return AuthResult.ERROR;
+        }
+    }
+
     public RegistrationResult attemptRegistration(Player player, String password, String confirmPassword) {
         if (!isConnected()) {
             return RegistrationResult.SERVICE_UNAVAILABLE;
@@ -115,6 +150,53 @@ public class AuthenticationBridge {
 
         try {
             authMeApi.forceRegister(player, password, true);
+            return RegistrationResult.SUCCESS;
+        } catch (Exception ex) {
+            plugin.getLogger().log(Level.WARNING, "Registration failed for " + playerName, ex);
+            return RegistrationResult.ERROR;
+        }
+    }
+
+    /**
+     * Attempt registration using only the player name (for configuration phase).
+     * This registers the player without requiring a Player object.
+     *
+     * @param playerName      the player's name
+     * @param password        the password to register with
+     * @param confirmPassword the password confirmation
+     * @return the registration result
+     */
+    public RegistrationResult attemptRegistrationByName(String playerName, String password, String confirmPassword) {
+        if (!isConnected()) {
+            return RegistrationResult.SERVICE_UNAVAILABLE;
+        }
+
+        if (isPlayerRegistered(playerName)) {
+            return RegistrationResult.ALREADY_EXISTS;
+        }
+
+        if (password == null || password.isBlank()) {
+            return RegistrationResult.INVALID_PASSWORD;
+        }
+
+        int minLength = fetchMinPasswordLength();
+        int maxLength = fetchMaxPasswordLength();
+
+        if (password.length() < minLength) {
+            return RegistrationResult.PASSWORD_TOO_SHORT;
+        }
+
+        if (password.length() > maxLength) {
+            return RegistrationResult.PASSWORD_TOO_LONG;
+        }
+
+        if (confirmPassword != null && !confirmPassword.isBlank() && !password.equals(confirmPassword)) {
+            return RegistrationResult.PASSWORD_MISMATCH;
+        }
+
+        try {
+            // Register the player using AuthMe API with player name only
+            authMeApi.registerPlayer(playerName, password);
             return RegistrationResult.SUCCESS;
         } catch (Exception ex) {
             plugin.getLogger().log(Level.WARNING, "Registration failed for " + playerName, ex);

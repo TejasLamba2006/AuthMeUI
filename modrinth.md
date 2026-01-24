@@ -45,11 +45,26 @@ Want players to read and accept rules before playing? AuthMeUI can show them a r
 
 ## Why Server Owners Love It
 
+- **Pre-join authentication** - NEW! Make players authenticate before they even enter your world
 - **Fully customizable** - change every single message, button, and title
 - **Supports placeholders** - show player names, online counts, whatever you want
 - **MiniMessage formatting** - gradients, colors, hover effects, the works
 - **Lightweight** - doesn't affect server performance
 - **Just works** - drop it in, configure it, forget about it
+
+---
+
+## 🆕 NEW: Pre-Join Authentication Mode
+
+Want players to log in BEFORE they see your world? Enable configuration phase mode and the login dialog appears during the loading screen. Players who don't authenticate simply can't join!
+
+```yaml
+dialogs:
+  use-configuration-phase: true
+  configuration-phase-timeout: 60
+```
+
+---
 
 AuthMeUI is compatible with all major AuthMe forks:
 

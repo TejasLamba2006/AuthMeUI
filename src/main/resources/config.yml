@@ -14,6 +14,13 @@ dialogs:
   button-columns: 2
   # Default input field width
   input-width: 150
+  # Show authentication dialogs during configuration phase (before player joins)
+  # When enabled, players must authenticate before fully joining the server
+  # When disabled, dialogs are shown after the player joins (default behavior)
+  use-configuration-phase: false
+  # Timeout in seconds for configuration phase authentication (default: 60)
+  # After this time, the player will be disconnected if not authenticated
+  configuration-phase-timeout: 60
 
 # Login dialog configuration
 login-dialog:
@@ -31,7 +38,7 @@ login-dialog:
   #     label: "<yellow>Help</yellow>"
   #     template: "/help login"
 
-# Registration dialog configuration  
+# Registration dialog configuration
 register-dialog:
   title: "<white><bold>Create Account</bold></white>"
   body:
@@ -70,7 +77,7 @@ messages:
     password-incorrect: "<red>Incorrect password. Please try again.</red>"
     not-registered: "<yellow>You don't have an account. Please register first!</yellow>"
     success: "<green>Successfully logged in! Welcome back.</green>"
-  
+
   # Registration messages
   register:
     fields-empty: "<red>Please fill in both password fields!</red>"
@@ -81,11 +88,11 @@ messages:
     already-registered: "<yellow>You already have an account. Please login instead!</yellow>"
     failed: "<red>Registration failed. Please try again.</red>"
     success: "<green>Account created successfully! Welcome!</green>"
-  
+
   # Rules dialog messages
   rules:
     must-accept: "<red>You must accept the rules to continue!</red>"
-  
+
   # Command messages
   commands:
     no-permission: "<red>You don't have permission to do that!</red>"

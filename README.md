@@ -8,7 +8,7 @@ A modern, sleek dialog-based authentication interface for [AuthMe](https://githu
 
 </center>
 
-https://www.youtube.com/watch?v=NH7pD3-_vso&source_ve_path=MTc4NDI0
+<https://www.youtube.com/watch?v=NH7pD3-_vso&source_ve_path=MTc4NDI0>
 
 ## Overview
 
@@ -20,11 +20,32 @@ AuthMeUI replaces the traditional chat-based login and registration prompts with
 - **Login Dialog** - Clean password entry with customizable buttons
 - **Registration Dialog** - Password + confirmation fields with validation
 - **Rules Dialog** - Display server rules players must accept before playing
+- **Configuration Phase Support** - Show authentication dialogs BEFORE players join the server (blocking authentication)
 - **Fully Customizable** - Every message, button, and title can be configured
 - **PlaceholderAPI Support** - Use any placeholder in your dialog text
 - **MiniMessage Formatting** - Full support for colors, gradients, and formatting
 - **Universal AuthMe Support** - Works with all AuthMe forks out of the box
 - **bStats Integration** - Anonymous usage statistics
+
+## Authentication Modes
+
+AuthMeUI supports two authentication modes:
+
+### Post-Join Mode (Default)
+
+The traditional approach where dialogs appear after the player has joined the server. Players are in-game but restricted until authenticated.
+
+### Configuration Phase Mode (Pre-Join)
+
+A modern approach using Minecraft's configuration phase to show authentication dialogs **before** the player joins the server. Players cannot enter the world until they authenticate successfully.
+
+To enable configuration phase mode, set in your `config.yml`:
+
+```yaml
+dialogs:
+  use-configuration-phase: true
+  configuration-phase-timeout: 60  # seconds before disconnecting unauthenticated players
+```
 
 ## Supported AuthMe Versions
 

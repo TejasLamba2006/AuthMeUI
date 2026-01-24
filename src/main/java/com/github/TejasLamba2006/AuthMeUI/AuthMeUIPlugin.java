@@ -5,6 +5,7 @@ import com.github.TejasLamba2006.AuthMeUI.commands.AuthMeUICommand;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import com.github.TejasLamba2006.AuthMeUI.dialogs.DialogManager;
 import com.github.TejasLamba2006.AuthMeUI.listeners.AuthenticationStateListener;
+import com.github.TejasLamba2006.AuthMeUI.listeners.ConfigurationPhaseListener;
 import com.github.TejasLamba2006.AuthMeUI.listeners.DialogInteractionListener;
 import com.github.TejasLamba2006.AuthMeUI.listeners.PlayerSessionListener;
 import com.github.TejasLamba2006.AuthMeUI.statistics.AnalyticsHandler;
@@ -22,6 +23,7 @@ public final class AuthMeUIPlugin extends JavaPlugin {
     private AuthenticationBridge authBridge;
     private DialogManager dialogManager;
     private AnalyticsHandler analyticsHandler;
+    private ConfigurationPhaseListener configurationPhaseListener;
 
     @Override
     public void onEnable() {
@@ -59,14 +61,32 @@ public final class AuthMeUIPlugin extends JavaPlugin {
     private void registerEventHandlers() {
         PluginManager pluginManager = getServer().getPluginManager();
 
-        pluginManager.registerEvents(
-                new PlayerSessionListener(this, authBridge, dialogManager),
-                this);
+        // Create the dialog interaction listener
+        DialogInteractionListener dialogInteractionListener = new DialogInteractionListener(
+                this, authBridge, dialogManager, settingsManager);
 
-        pluginManager.registerEvents(
-                new DialogInteractionListener(this, authBridge, dialogManager, settingsManager),
-                this);
+        // Create and register configuration phase listener if enabled
+        if (settingsManager.useConfigurationPhase()) {
+            configurationPhaseListener = new ConfigurationPhaseListener(
+                    this, authBridge, dialogManager, settingsManager);
 
+            // Wire up the configuration phase listener to the dialog interaction listener
+            dialogInteractionListener.setConfigurationPhaseListener(configurationPhaseListener);
+
+            pluginManager.registerEvents(configurationPhaseListener, this);
+
+            getLogger().info("Configuration phase authentication enabled - dialogs will be shown before players join.");
+        } else {
+            // Register the player session listener for post-join authentication
+            pluginManager.registerEvents(
+                    new PlayerSessionListener(this, authBridge, dialogManager),
+                    this);
+        }
+
+        // Always register the dialog interaction listener
+        pluginManager.registerEvents(dialogInteractionListener, this);
+
+        // Register the authentication state listener
         pluginManager.registerEvents(
                 new AuthenticationStateListener(this, authBridge, dialogManager),
                 this);
@@ -90,6 +110,11 @@ public final class AuthMeUIPlugin extends JavaPlugin {
         getLogger().info("  Author: TejasLamba2006");
         getLogger().info("  Modern Dialog Authentication for AuthMe");
         getLogger().info("========================================");
+        if (settingsManager.useConfigurationPhase()) {
+            getLogger().info("Mode: Configuration Phase (pre-join authentication)");
+        } else {
+            getLogger().info("Mode: In-Game (post-join authentication)");
+        }
         getLogger().info("Plugin enabled successfully!");
     }
 
@@ -112,5 +137,9 @@ public final class AuthMeUIPlugin extends JavaPlugin {
 
     public DialogManager getDialogManager() {
         return dialogManager;
+    }
+
+    public ConfigurationPhaseListener getConfigurationPhaseListener() {
+        return configurationPhaseListener;
     }
 }

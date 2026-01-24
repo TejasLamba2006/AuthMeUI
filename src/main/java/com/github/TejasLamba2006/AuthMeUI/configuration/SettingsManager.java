@@ -29,6 +29,14 @@ public class SettingsManager {
         this.config = plugin.getConfig();
     }
 
+    public boolean useConfigurationPhase() {
+        return config.getBoolean("dialogs.use-configuration-phase", false);
+    }
+
+    public int getConfigurationPhaseTimeout() {
+        return config.getInt("dialogs.configuration-phase-timeout", 60);
+    }
+
     public boolean canCloseWithEscape() {
         return config.getBoolean("dialogs.allow-escape-close", false);
     }

@@ -10,6 +10,11 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 
+/**
+ * Handles post-join authentication dialogs.
+ * This listener is only registered when configuration phase authentication is
+ * DISABLED.
+ */
 public class PlayerSessionListener implements Listener {
 
     private static final int INITIAL_DELAY_TICKS = 5;
