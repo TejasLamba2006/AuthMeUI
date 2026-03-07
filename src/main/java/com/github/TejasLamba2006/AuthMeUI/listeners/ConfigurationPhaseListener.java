@@ -13,7 +13,11 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
+import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerJoinEvent;
+
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,6 +46,12 @@ public class ConfigurationPhaseListener implements Listener {
      * Tracks whether a player is registered (for showing the correct dialog).
      */
     private final Map<UUID, Boolean> playerRegistrationStatus = new ConcurrentHashMap<>();
+
+    /**
+     * Tracks players who successfully authenticated during the configuration phase
+     * and need to be force-logged in when they finish joining.
+     */
+    private final Set<UUID> preAuthenticatedPlayers = ConcurrentHashMap.newKeySet();
 
     public ConfigurationPhaseListener(
             AuthMeUIPlugin plugin,
@@ -127,6 +137,7 @@ public class ConfigurationPhaseListener implements Listener {
             future.complete(false);
         }
         playerRegistrationStatus.remove(uniqueId);
+        preAuthenticatedPlayers.remove(uniqueId);
     }
 
     /**
@@ -138,7 +149,18 @@ public class ConfigurationPhaseListener implements Listener {
     public void completeAuthentication(UUID uniqueId, boolean success) {
         CompletableFuture<Boolean> future = pendingAuthentications.get(uniqueId);
         if (future != null) {
+            if (success) {
+                preAuthenticatedPlayers.add(uniqueId);
+            }
             future.complete(success);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        if (preAuthenticatedPlayers.remove(player.getUniqueId())) {
+            authBridge.forceLogin(player);
         }
     }
 

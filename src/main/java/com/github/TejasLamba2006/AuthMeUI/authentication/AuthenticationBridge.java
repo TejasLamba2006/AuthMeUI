@@ -40,6 +40,17 @@ public class AuthenticationBridge {
         return isConnected() && authMeApi.checkPassword(playerName, password);
     }
 
+    /**
+     * Force login a player without password validation.
+     * Used after configuration phase authentication where the password was already
+     * verified.
+     */
+    public void forceLogin(Player player) {
+        if (isConnected()) {
+            authMeApi.forceLogin(player);
+        }
+    }
+
     public int fetchMinPasswordLength() {
         Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
         if (authMe != null && authMe.isEnabled()) {
