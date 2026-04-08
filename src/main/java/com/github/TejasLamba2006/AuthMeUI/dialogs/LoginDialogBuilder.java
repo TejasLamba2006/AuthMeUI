@@ -85,6 +85,10 @@ public class LoginDialogBuilder {
                 .action(DialogAction.customClick(DialogIdentifiers.LOGIN_SUBMIT, null))
                 .build();
 
-        return settings.buildActionButtons("login-dialog", submitButton);
+        ActionButton cancelButton = ActionButton.builder(settings.getLoginCancelButton())
+                .action(DialogAction.customClick(DialogIdentifiers.LOGIN_CANCEL, null))
+                .build();
+
+        return settings.buildLoginActionButtons(submitButton, cancelButton);
     }
 }

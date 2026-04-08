@@ -56,13 +56,9 @@ public class DialogInteractionListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onDialogInteraction(PlayerCustomClickEvent event) {
-        DialogResponseView responseView = event.getDialogResponseView();
-        if (responseView == null) {
-            return;
-        }
-
         PlayerCommonConnection connection = event.getCommonConnection();
         Key actionKey = event.getIdentifier();
+        DialogResponseView responseView = event.getDialogResponseView();
 
         // Handle configuration phase connections
         if (connection instanceof PlayerConfigurationConnection configConnection) {
@@ -76,6 +72,15 @@ public class DialogInteractionListener implements Listener {
         }
 
         Player player = gameConnection.getPlayer();
+
+        if (actionKey.equals(DialogIdentifiers.LOGIN_CANCEL)) {
+            handleLoginCancel(player);
+            return;
+        }
+
+        if (responseView == null) {
+            return;
+        }
 
         if (actionKey.equals(DialogIdentifiers.LOGIN_SUBMIT)) {
             handleLoginSubmission(player, responseView);
@@ -100,6 +105,15 @@ public class DialogInteractionListener implements Listener {
         Audience audience = connection.getAudience();
 
         if (uniqueId == null || playerName == null) {
+            return;
+        }
+
+        if (actionKey.equals(DialogIdentifiers.LOGIN_CANCEL)) {
+            handleConfigPhaseCancel(uniqueId);
+            return;
+        }
+
+        if (responseView == null) {
             return;
         }
 
@@ -261,12 +275,22 @@ public class DialogInteractionListener implements Listener {
         audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName));
     }
 
+    private void handleConfigPhaseCancel(UUID uniqueId) {
+        if (configPhaseListener != null) {
+            configPhaseListener.cancelAuthentication(uniqueId);
+        }
+    }
+
     // ==================== In-Game Handlers ====================
 
     private void handleLoginSubmission(Player player, DialogResponseView response) {
         String enteredPassword = response.getText(PASSWORD_FIELD);
 
         if (isNullOrEmpty(enteredPassword)) {
+            if (authBridge.isPlayerAuthenticated(player)) {
+                return;
+            }
+
             displayLoginWithError(player, "login.password-empty", "<red>Please enter your password!</red>");
             return;
         }
@@ -290,6 +314,17 @@ public class DialogInteractionListener implements Listener {
             default -> displayLoginWithError(player, "login.password-incorrect",
                     "<red>Incorrect password. Please try again.</red>");
         }
+    }
+
+    private void handleLoginCancel(Player player) {
+        if (!player.isOnline()) {
+            return;
+        }
+
+        authBridge.forceLogout(player);
+        Component disconnectMessage = settings.getMessage("login.cancelled",
+                "<yellow>Authentication cancelled.</yellow>");
+        player.kick(disconnectMessage);
     }
 
     private void handleRegistrationSubmission(Player player, DialogResponseView response) {

@@ -9,12 +9,15 @@ import io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConf
 import com.destroystokyo.paper.event.player.PlayerConnectionCloseEvent;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.plugin.PluginManager;
 
 import java.util.Map;
 import java.util.Set;
@@ -53,6 +56,21 @@ public class ConfigurationPhaseListener implements Listener {
      */
     private final Set<UUID> preAuthenticatedPlayers = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Tracks player IPs discovered during async pre-login for session checks.
+     */
+    private final Map<UUID, String> connectionIps = new ConcurrentHashMap<>();
+
+    /**
+     * Tracks registered players whose login checks are deferred until post-join.
+     */
+    private final Set<UUID> deferredPostJoinChecks = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Tracks players who explicitly cancelled authentication via dialog action.
+     */
+    private final Set<UUID> cancelledAuthentications = ConcurrentHashMap.newKeySet();
+
     public ConfigurationPhaseListener(
             AuthMeUIPlugin plugin,
             AuthenticationBridge authBridge,
@@ -62,6 +80,16 @@ public class ConfigurationPhaseListener implements Listener {
         this.authBridge = authBridge;
         this.dialogManager = dialogManager;
         this.settings = settings;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAsyncPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
+        UUID uniqueId = event.getUniqueId();
+        if (uniqueId == null || event.getAddress() == null) {
+            return;
+        }
+
+        connectionIps.put(uniqueId, event.getAddress().getHostAddress());
     }
 
     @EventHandler(priority = EventPriority.NORMAL)
@@ -96,6 +124,12 @@ public class ConfigurationPhaseListener implements Listener {
         boolean isRegistered = authBridge.isPlayerRegistered(playerName);
         playerRegistrationStatus.put(uniqueId, isRegistered);
 
+        if (isRegistered && shouldDeferToPostJoin(uniqueId, playerName)) {
+            playerRegistrationStatus.remove(uniqueId);
+            deferredPostJoinChecks.add(uniqueId);
+            return;
+        }
+
         // Create a completable future for this authentication attempt
         CompletableFuture<Boolean> authFuture = new CompletableFuture<>();
         int timeout = settings.getConfigurationPhaseTimeout();
@@ -124,8 +158,10 @@ public class ConfigurationPhaseListener implements Listener {
         playerRegistrationStatus.remove(uniqueId);
 
         if (!authenticated) {
-            connection
-                    .disconnect(Component.text("Authentication timed out or failed. Please reconnect and try again."));
+            Component disconnectMessage = cancelledAuthentications.remove(uniqueId)
+                    ? settings.getMessage("login.cancelled", "<yellow>Authentication cancelled.</yellow>")
+                    : Component.text("Authentication timed out or failed. Please reconnect and try again.");
+            connection.disconnect(disconnectMessage);
         }
     }
 
@@ -138,6 +174,14 @@ public class ConfigurationPhaseListener implements Listener {
         }
         playerRegistrationStatus.remove(uniqueId);
         preAuthenticatedPlayers.remove(uniqueId);
+        deferredPostJoinChecks.remove(uniqueId);
+        connectionIps.remove(uniqueId);
+        cancelledAuthentications.remove(uniqueId);
+    }
+
+    public void cancelAuthentication(UUID uniqueId) {
+        cancelledAuthentications.add(uniqueId);
+        completeAuthentication(uniqueId, false);
     }
 
     /**
@@ -159,9 +203,37 @@ public class ConfigurationPhaseListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        if (preAuthenticatedPlayers.remove(player.getUniqueId())) {
+        UUID uniqueId = player.getUniqueId();
+        connectionIps.remove(uniqueId);
+
+        if (preAuthenticatedPlayers.remove(uniqueId)) {
             authBridge.forceLogin(player);
+            return;
         }
+
+        if (deferredPostJoinChecks.remove(uniqueId)) {
+            int delayTicks = settings.getConfigurationPhaseDeferredLoginCheckDelayTicks();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline() || player.hasPermission("authmeui.bypass")) {
+                    return;
+                }
+
+                if (!authBridge.isPlayerAuthenticated(player)) {
+                    player.showDialog(dialogManager.createLoginDialog(player));
+                }
+            }, delayTicks);
+        }
+    }
+
+    private boolean shouldDeferToPostJoin(UUID uniqueId, String playerName) {
+        boolean sessionCompatible = settings.respectAuthMeSessionsInConfigurationPhase()
+                && authBridge.canResumeSession(playerName, connectionIps.get(uniqueId));
+
+        PluginManager pluginManager = plugin.getServer().getPluginManager();
+        boolean fastLoginCompatible = settings.isFastLoginCompatibilityEnabled()
+                && pluginManager.isPluginEnabled("FastLogin");
+
+        return sessionCompatible || fastLoginCompatible;
     }
 
     /**

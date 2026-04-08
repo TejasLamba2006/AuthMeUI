@@ -21,6 +21,14 @@ dialogs:
   # Timeout in seconds for configuration phase authentication (default: 60)
   # After this time, the player will be disconnected if not authenticated
   configuration-phase-timeout: 60
+  # Respect AuthMe session settings in configuration phase.
+  # If enabled, registered players with a valid AuthMe session are not forced into the pre-join login dialog.
+  configuration-phase-respect-authme-sessions: true
+  # FastLogin compatibility mode for configuration phase.
+  # If FastLogin is present, registered players are checked shortly after join instead of being blocked pre-join.
+  configuration-phase-fastlogin-compatibility: true
+  # Delay in ticks before post-join auth dialog fallback when compatibility mode defers pre-join checks.
+  configuration-phase-deferred-login-check-delay-ticks: 40
 
 # Login dialog configuration
 login-dialog:
@@ -30,10 +38,14 @@ login-dialog:
     - "<dark_gray>If you forgot your password, contact staff.</dark_gray>"
   password-label: "Password"
   submit-button: "<green>Sign In</green>"
+  cancel-button-enabled: true
+  cancel-button: "<red>Cancel</red>"
   # Custom action buttons (optional)
   # actions:
   #   - type: submit
   #     label: "<green>Login</green>"
+  #   - type: cancel
+  #     label: "<red>Cancel</red>"
   #   - type: command
   #     label: "<yellow>Help</yellow>"
   #     template: "/help login"
@@ -76,6 +88,7 @@ messages:
     password-empty: "<red>Please enter your password!</red>"
     password-incorrect: "<red>Incorrect password. Please try again.</red>"
     not-registered: "<yellow>You don't have an account. Please register first!</yellow>"
+    cancelled: "<yellow>Authentication cancelled.</yellow>"
     success: "<green>Successfully logged in! Welcome back.</green>"
 
   # Registration messages

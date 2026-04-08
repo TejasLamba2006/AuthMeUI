@@ -37,6 +37,18 @@ public class SettingsManager {
         return config.getInt("dialogs.configuration-phase-timeout", 60);
     }
 
+    public boolean respectAuthMeSessionsInConfigurationPhase() {
+        return config.getBoolean("dialogs.configuration-phase-respect-authme-sessions", true);
+    }
+
+    public boolean isFastLoginCompatibilityEnabled() {
+        return config.getBoolean("dialogs.configuration-phase-fastlogin-compatibility", true);
+    }
+
+    public int getConfigurationPhaseDeferredLoginCheckDelayTicks() {
+        return Math.max(0, config.getInt("dialogs.configuration-phase-deferred-login-check-delay-ticks", 40));
+    }
+
     public boolean canCloseWithEscape() {
         return config.getBoolean("dialogs.allow-escape-close", false);
     }
@@ -65,6 +77,15 @@ public class SettingsManager {
 
     public Component getLoginSubmitButton() {
         String raw = config.getString("login-dialog.submit-button", "<green>Sign In</green>");
+        return miniMessage.deserialize(raw);
+    }
+
+    public boolean isLoginCancelEnabled() {
+        return config.getBoolean("login-dialog.cancel-button-enabled", true);
+    }
+
+    public Component getLoginCancelButton() {
+        String raw = config.getString("login-dialog.cancel-button", "<red>Cancel</red>");
         return miniMessage.deserialize(raw);
     }
 
@@ -180,6 +201,53 @@ public class SettingsManager {
 
         if (!hasPrimaryAction) {
             buttons.addFirst(primaryAction);
+        }
+
+        return buttons;
+    }
+
+    public List<ActionButton> buildLoginActionButtons(ActionButton submitAction, ActionButton cancelAction) {
+        List<ActionButton> buttons = new ArrayList<>();
+        List<Map<?, ?>> rawActions = config.getMapList("login-dialog.actions");
+
+        boolean hasSubmitAction = false;
+        boolean hasCancelAction = false;
+        boolean cancelEnabled = isLoginCancelEnabled();
+
+        if (rawActions != null && !rawActions.isEmpty()) {
+            for (Map<?, ?> actionMap : rawActions) {
+                String type = extractString(actionMap, "type", "submit").toLowerCase(Locale.ROOT);
+                String labelText = extractString(actionMap, "label", "<gray>Button</gray>");
+                Component label = miniMessage.deserialize(labelText);
+
+                switch (type) {
+                    case "submit" -> {
+                        buttons.add(submitAction);
+                        hasSubmitAction = true;
+                    }
+                    case "cancel" -> {
+                        if (cancelEnabled) {
+                            buttons.add(cancelAction);
+                            hasCancelAction = true;
+                        }
+                    }
+                    case "command" -> {
+                        String commandTemplate = extractString(actionMap, "template", "/help");
+                        buttons.add(
+                                ActionButton.builder(label)
+                                        .action(DialogAction.commandTemplate(commandTemplate))
+                                        .build());
+                    }
+                }
+            }
+        }
+
+        if (!hasSubmitAction) {
+            buttons.addFirst(submitAction);
+        }
+
+        if (cancelEnabled && !hasCancelAction) {
+            buttons.add(cancelAction);
         }
 
         return buttons;

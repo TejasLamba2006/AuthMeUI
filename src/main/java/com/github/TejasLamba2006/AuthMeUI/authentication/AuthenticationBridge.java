@@ -5,6 +5,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.logging.Level;
 
 public class AuthenticationBridge {
@@ -49,6 +51,54 @@ public class AuthenticationBridge {
         if (isConnected()) {
             authMeApi.forceLogin(player);
         }
+    }
+
+    /**
+     * Force logout a player immediately.
+     */
+    public void forceLogout(Player player) {
+        if (isConnected()) {
+            authMeApi.forceLogout(player);
+        }
+    }
+
+    /**
+     * Checks if the player should be able to resume an AuthMe session based on
+     * AuthMe's session settings, last login timestamp and last login IP.
+     */
+    public boolean canResumeSession(String playerName, String currentIpAddress) {
+        if (!isConnected() || playerName == null || playerName.isBlank()
+                || currentIpAddress == null || currentIpAddress.isBlank()) {
+            return false;
+        }
+
+        Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
+        if (authMe == null || !authMe.isEnabled()) {
+            return false;
+        }
+
+        if (!authMe.getConfig().getBoolean("settings.sessions.enabled", false)) {
+            return false;
+        }
+
+        int timeoutMinutes = authMe.getConfig().getInt("settings.sessions.timeout", 10);
+        if (timeoutMinutes <= 0) {
+            return false;
+        }
+
+        String lastIp = authMeApi.getLastIp(playerName);
+        if (lastIp == null || lastIp.isBlank() || !lastIp.equals(currentIpAddress)) {
+            return false;
+        }
+
+        Instant lastLogin = authMeApi.getLastLoginTime(playerName);
+        if (lastLogin == null) {
+            return false;
+        }
+
+        long elapsedMillis = Duration.between(lastLogin, Instant.now()).toMillis();
+        long timeoutMillis = timeoutMinutes * 60_000L;
+        return elapsedMillis >= 0 && elapsedMillis < timeoutMillis;
     }
 
     public int fetchMinPasswordLength() {

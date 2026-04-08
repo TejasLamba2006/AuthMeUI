@@ -11,6 +11,8 @@ public final class DialogIdentifiers {
 
     public static final Key LOGIN_SUBMIT = Key.key(NAMESPACE, "action/login");
 
+    public static final Key LOGIN_CANCEL = Key.key(NAMESPACE, "action/login_cancel");
+
     public static final Key REGISTER_SUBMIT = Key.key(NAMESPACE, "action/register");
 
     public static final Key RULES_CONFIRM = Key.key(NAMESPACE, "action/rules_confirm");
