@@ -1,7 +1,8 @@
 name: AuthMeUI
-version: '${project.version}'
+version: "${project.version}"
 main: com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin
-api-version: '1.21'
+api-version: "1.21"
+folia-supported: true
 author: TejasLamba2006
 description: Modern Dialog-Based Authentication UI for AuthMe
 website: https://github.com/TejasLamba2006/AuthMeUI

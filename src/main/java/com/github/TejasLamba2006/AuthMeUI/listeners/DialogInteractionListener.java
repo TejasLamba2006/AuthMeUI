@@ -15,7 +15,6 @@ import io.papermc.paper.event.player.PlayerCustomClickEvent;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -369,7 +368,7 @@ public class DialogInteractionListener implements Listener {
             Boolean hasAgreed = response.getBoolean(settings.getAgreementKey());
 
             if (hasAgreed == null || !hasAgreed) {
-                scheduleDialogReopen(() -> {
+                scheduleDialogReopen(player, () -> {
                     if (!authBridge.isPlayerAuthenticated(player)) {
                         player.showDialog(dialogManager.createRulesDialog(player));
                     }
@@ -378,7 +377,7 @@ public class DialogInteractionListener implements Listener {
             }
         }
 
-        scheduleDialogReopen(() -> player.showDialog(dialogManager.createRegistrationDialog(player)));
+        scheduleDialogReopen(player, () -> player.showDialog(dialogManager.createRegistrationDialog(player)));
     }
 
     private void handleSupportAction(Player player) {
@@ -387,7 +386,7 @@ public class DialogInteractionListener implements Listener {
     }
 
     private void displayLoginWithError(Player player, String messageKey, String defaultMessage) {
-        scheduleDialogReopen(() -> {
+        scheduleDialogReopen(player, () -> {
             if (!authBridge.isPlayerAuthenticated(player)) {
                 Component errorMsg = settings.getMessage(messageKey, defaultMessage);
                 player.showDialog(dialogManager.createLoginDialog(player, errorMsg));
@@ -401,7 +400,7 @@ public class DialogInteractionListener implements Listener {
 
     private void displayRegistrationWithError(Player player, String messageKey, String defaultMessage,
             Map<String, String> placeholders) {
-        scheduleDialogReopen(() -> {
+        scheduleDialogReopen(player, () -> {
             if (!authBridge.isPlayerAuthenticated(player)) {
                 Component errorMsg = placeholders != null
                         ? settings.getMessage(messageKey, defaultMessage, placeholders)
@@ -412,7 +411,7 @@ public class DialogInteractionListener implements Listener {
     }
 
     private void scheduleRegistrationVerification(Player player) {
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        player.getScheduler().runDelayed(plugin, scheduledTask -> {
             if (player.isOnline()) {
                 boolean isValid = authBridge.isPlayerAuthenticated(player)
                         || authBridge.isPlayerRegistered(player.getName());
@@ -423,11 +422,11 @@ public class DialogInteractionListener implements Listener {
                     player.showDialog(dialogManager.createRegistrationDialog(player, errorMsg));
                 }
             }
-        }, 3L);
+        }, null, 3L);
     }
 
-    private void scheduleDialogReopen(Runnable action) {
-        Bukkit.getScheduler().runTask(plugin, action);
+    private void scheduleDialogReopen(Player player, Runnable action) {
+        player.getScheduler().run(plugin, scheduledTask -> action.run(), null);
     }
 
     private boolean isNullOrEmpty(String value) {

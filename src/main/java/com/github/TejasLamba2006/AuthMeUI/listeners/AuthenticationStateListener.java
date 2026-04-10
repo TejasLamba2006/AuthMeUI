@@ -31,7 +31,7 @@ public class AuthenticationStateListener implements Listener {
     public void onPlayerLogout(LogoutEvent event) {
         Player affectedPlayer = event.getPlayer();
 
-        scheduleDialogPresentation(() -> {
+        scheduleDialogPresentation(affectedPlayer, () -> {
             if (affectedPlayer.isOnline() && !authBridge.isPlayerAuthenticated(affectedPlayer)) {
                 affectedPlayer.showDialog(dialogManager.createLoginDialog(affectedPlayer));
             }
@@ -42,7 +42,7 @@ public class AuthenticationStateListener implements Listener {
     public void onSelfUnregister(UnregisterByPlayerEvent event) {
         Player affectedPlayer = event.getPlayer();
 
-        scheduleDialogPresentation(() -> {
+        scheduleDialogPresentation(affectedPlayer, () -> {
             if (affectedPlayer != null && affectedPlayer.isOnline()) {
                 affectedPlayer.showDialog(dialogManager.createRulesDialog(affectedPlayer));
             }
@@ -55,12 +55,16 @@ public class AuthenticationStateListener implements Listener {
         Player affectedPlayer = Bukkit.getPlayerExact(targetName);
 
         if (affectedPlayer != null && affectedPlayer.isOnline()) {
-            scheduleDialogPresentation(
+            scheduleDialogPresentation(affectedPlayer,
                     () -> affectedPlayer.showDialog(dialogManager.createRulesDialog(affectedPlayer)));
         }
     }
 
-    private void scheduleDialogPresentation(Runnable action) {
-        Bukkit.getScheduler().runTask(plugin, action);
+    private void scheduleDialogPresentation(Player player, Runnable action) {
+        if (player == null) {
+            return;
+        }
+
+        player.getScheduler().run(plugin, scheduledTask -> action.run(), null);
     }
 }

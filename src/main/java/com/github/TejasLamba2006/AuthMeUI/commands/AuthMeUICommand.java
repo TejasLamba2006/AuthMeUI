@@ -58,6 +58,7 @@ public class AuthMeUICommand implements TabExecutor {
         }
 
         settings.reload();
+        authBridge.refreshAuthMeSettingsCache();
 
         Component successMsg = settings.getMessage("commands.config-reloaded",
                 "<green>AuthMeUI configuration reloaded successfully!</green>");

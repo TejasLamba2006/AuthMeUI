@@ -8,7 +8,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.scheduler.BukkitRunnable;
 
 /**
  * Handles post-join authentication dialogs.
@@ -47,41 +46,26 @@ public class PlayerSessionListener implements Listener {
     }
 
     private void scheduleAuthenticationCheck(Player player) {
-        new AuthenticationCheckTask(player).runTaskTimer(plugin, INITIAL_DELAY_TICKS, CHECK_INTERVAL_TICKS);
-    }
+        final int[] elapsedTicks = { 0 };
 
-    private class AuthenticationCheckTask extends BukkitRunnable {
-
-        private final Player targetPlayer;
-        private int elapsedTicks = 0;
-
-        AuthenticationCheckTask(Player player) {
-            this.targetPlayer = player;
-        }
-
-        @Override
-        public void run() {
-            if (!targetPlayer.isOnline()) {
-                cancel();
+        player.getScheduler().runAtFixedRate(plugin, scheduledTask -> {
+            if (!player.isOnline()) {
+                scheduledTask.cancel();
                 return;
             }
 
-            if (authBridge.isPlayerAuthenticated(targetPlayer)) {
-                cancel();
+            if (authBridge.isPlayerAuthenticated(player)) {
+                scheduledTask.cancel();
                 return;
             }
 
-            elapsedTicks += CHECK_INTERVAL_TICKS;
+            elapsedTicks[0] += CHECK_INTERVAL_TICKS;
 
-            if (elapsedTicks >= MAX_WAIT_TICKS) {
-                presentAppropriateDialog();
-                cancel();
+            if (elapsedTicks[0] >= MAX_WAIT_TICKS) {
+                boolean hasAccount = authBridge.isPlayerRegistered(player.getName());
+                dialogManager.presentAuthDialog(player, hasAccount);
+                scheduledTask.cancel();
             }
-        }
-
-        private void presentAppropriateDialog() {
-            boolean hasAccount = authBridge.isPlayerRegistered(targetPlayer.getName());
-            dialogManager.presentAuthDialog(targetPlayer, hasAccount);
-        }
+        }, null, INITIAL_DELAY_TICKS, CHECK_INTERVAL_TICKS);
     }
 }

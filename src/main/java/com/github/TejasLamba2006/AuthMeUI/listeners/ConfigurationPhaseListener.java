@@ -9,7 +9,6 @@ import io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConf
 import com.destroystokyo.paper.event.player.PlayerConnectionCloseEvent;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -17,7 +16,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.plugin.PluginManager;
 
 import java.util.Map;
 import java.util.Set;
@@ -38,6 +36,7 @@ public class ConfigurationPhaseListener implements Listener {
     private final AuthenticationBridge authBridge;
     private final DialogManager dialogManager;
     private final SettingsManager settings;
+    private final boolean fastLoginDetected;
 
     /**
      * Tracks pending authentication responses for players in the configuration
@@ -80,6 +79,7 @@ public class ConfigurationPhaseListener implements Listener {
         this.authBridge = authBridge;
         this.dialogManager = dialogManager;
         this.settings = settings;
+        this.fastLoginDetected = plugin.getServer().getPluginManager().isPluginEnabled("FastLogin");
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -213,7 +213,7 @@ public class ConfigurationPhaseListener implements Listener {
 
         if (deferredPostJoinChecks.remove(uniqueId)) {
             int delayTicks = settings.getConfigurationPhaseDeferredLoginCheckDelayTicks();
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            player.getScheduler().runDelayed(plugin, scheduledTask -> {
                 if (!player.isOnline() || player.hasPermission("authmeui.bypass")) {
                     return;
                 }
@@ -221,7 +221,7 @@ public class ConfigurationPhaseListener implements Listener {
                 if (!authBridge.isPlayerAuthenticated(player)) {
                     player.showDialog(dialogManager.createLoginDialog(player));
                 }
-            }, delayTicks);
+            }, null, delayTicks);
         }
     }
 
@@ -229,9 +229,8 @@ public class ConfigurationPhaseListener implements Listener {
         boolean sessionCompatible = settings.respectAuthMeSessionsInConfigurationPhase()
                 && authBridge.canResumeSession(playerName, connectionIps.get(uniqueId));
 
-        PluginManager pluginManager = plugin.getServer().getPluginManager();
         boolean fastLoginCompatible = settings.isFastLoginCompatibilityEnabled()
-                && pluginManager.isPluginEnabled("FastLogin");
+                && fastLoginDetected;
 
         return sessionCompatible || fastLoginCompatible;
     }

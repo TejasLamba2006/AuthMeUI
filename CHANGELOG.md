@@ -4,6 +4,26 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.3.0] - 2026-04-10
+
+### Folia compatibility
+
+- Added `folia-supported: true` in plugin metadata.
+- Replaced Bukkit scheduler usage with player entity schedulers for player-bound tasks.
+- Updated delayed and repeating auth/dialog flows to run on player-owned schedulers.
+
+### Async-safety improvements
+
+- Added cached AuthMe settings in `AuthenticationBridge` for session and password constraints.
+- Removed async-path Bukkit plugin/config lookups in configuration-phase checks.
+- Added cache refresh call during `/authmeui reload`.
+
+### Notes
+
+- Maintains compatibility with normal Paper while adding Folia-safe scheduling paths.
+
+---
+
 ## [1.2.0] - 2026-04-08
 
 ### Compatibility updates

@@ -1,7 +1,6 @@
 package com.github.TejasLamba2006.AuthMeUI.authentication;
 
 import fr.xephi.authme.api.v3.AuthMeApi;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -11,12 +10,22 @@ import java.util.logging.Level;
 
 public class AuthenticationBridge {
 
+    private static final int DEFAULT_MIN_PASSWORD_LENGTH = 5;
+    private static final int DEFAULT_MAX_PASSWORD_LENGTH = 30;
+    private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 10;
+
     private final Plugin plugin;
     private final AuthMeApi authMeApi;
+
+    private volatile boolean sessionsEnabled;
+    private volatile int sessionTimeoutMinutes;
+    private volatile int minPasswordLength;
+    private volatile int maxPasswordLength;
 
     public AuthenticationBridge(Plugin plugin) {
         this.plugin = plugin;
         this.authMeApi = initializeApi();
+        refreshAuthMeSettingsCache();
     }
 
     private AuthMeApi initializeApi() {
@@ -40,6 +49,36 @@ public class AuthenticationBridge {
 
     public boolean validateCredentials(String playerName, String password) {
         return isConnected() && authMeApi.checkPassword(playerName, password);
+    }
+
+    /**
+     * Refreshes AuthMe config-derived settings.
+     * Should be called from a safe server thread (e.g. startup/reload).
+     */
+    public void refreshAuthMeSettingsCache() {
+        boolean cachedSessionsEnabled = false;
+        int cachedSessionTimeoutMinutes = DEFAULT_SESSION_TIMEOUT_MINUTES;
+        int cachedMinPasswordLength = DEFAULT_MIN_PASSWORD_LENGTH;
+        int cachedMaxPasswordLength = DEFAULT_MAX_PASSWORD_LENGTH;
+
+        Plugin authMe = plugin.getServer().getPluginManager().getPlugin("AuthMe");
+        if (authMe != null && authMe.isEnabled()) {
+            cachedSessionsEnabled = authMe.getConfig().getBoolean("settings.sessions.enabled", false);
+            cachedSessionTimeoutMinutes = authMe.getConfig().getInt(
+                    "settings.sessions.timeout",
+                    DEFAULT_SESSION_TIMEOUT_MINUTES);
+            cachedMinPasswordLength = authMe.getConfig().getInt(
+                    "security.minPasswordLength",
+                    DEFAULT_MIN_PASSWORD_LENGTH);
+            cachedMaxPasswordLength = authMe.getConfig().getInt(
+                    "security.passwordMaxLength",
+                    DEFAULT_MAX_PASSWORD_LENGTH);
+        }
+
+        this.sessionsEnabled = cachedSessionsEnabled;
+        this.sessionTimeoutMinutes = cachedSessionTimeoutMinutes;
+        this.minPasswordLength = cachedMinPasswordLength;
+        this.maxPasswordLength = cachedMaxPasswordLength;
     }
 
     /**
@@ -72,16 +111,11 @@ public class AuthenticationBridge {
             return false;
         }
 
-        Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
-        if (authMe == null || !authMe.isEnabled()) {
+        if (!sessionsEnabled) {
             return false;
         }
 
-        if (!authMe.getConfig().getBoolean("settings.sessions.enabled", false)) {
-            return false;
-        }
-
-        int timeoutMinutes = authMe.getConfig().getInt("settings.sessions.timeout", 10);
+        int timeoutMinutes = sessionTimeoutMinutes;
         if (timeoutMinutes <= 0) {
             return false;
         }
@@ -102,19 +136,11 @@ public class AuthenticationBridge {
     }
 
     public int fetchMinPasswordLength() {
-        Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
-        if (authMe != null && authMe.isEnabled()) {
-            return authMe.getConfig().getInt("security.minPasswordLength", 5);
-        }
-        return 5;
+        return minPasswordLength;
     }
 
     public int fetchMaxPasswordLength() {
-        Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
-        if (authMe != null && authMe.isEnabled()) {
-            return authMe.getConfig().getInt("security.passwordMaxLength", 30);
-        }
-        return 30;
+        return maxPasswordLength;
     }
 
     public AuthResult attemptLogin(Player player, String password) {
