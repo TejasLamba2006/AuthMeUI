@@ -4,6 +4,35 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.2.0] - 2026-04-08
+
+### Compatibility updates
+
+- Configuration phase now respects AuthMe session behavior for returning players when session compatibility is enabled.
+- Added FastLogin-aware handling in configuration phase mode so premium players are not blocked by an unnecessary pre-join login dialog.
+- Registered players can be deferred to a post-join auth check with a configurable delay.
+
+### Login dialog improvements
+
+- Added a dedicated Cancel action for the login dialog.
+- Cancel now disconnects the player immediately, and the in-game flow also triggers a server-side AuthMe logout.
+- Added a configurable cancellation message (`messages.login.cancelled`).
+
+### Behavior fixes
+
+- Login submissions with an empty password no longer show a false error if the player is already authenticated.
+- Improved cleanup for deferred and cancelled configuration-phase authentication states.
+
+### New config options
+
+- `dialogs.configuration-phase-respect-authme-sessions` (default: `true`)
+- `dialogs.configuration-phase-fastlogin-compatibility` (default: `true`)
+- `dialogs.configuration-phase-deferred-login-check-delay-ticks` (default: `40`)
+- `login-dialog.cancel-button-enabled` (default: `true`)
+- `login-dialog.cancel-button` (default: `<red>Cancel</red>`)
+
+---
+
 ## [1.1.0] - 2026-01-24
 
 ### New Feature: Pre-Join Authentication
