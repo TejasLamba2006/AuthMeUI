@@ -18,10 +18,6 @@ All notable changes to AuthMeUI will be documented in this file.
 - Removed async-path Bukkit plugin/config lookups in configuration-phase checks.
 - Added cache refresh call during `/authmeui reload`.
 
-### Notes
-
-- Maintains compatibility with normal Paper while adding Folia-safe scheduling paths.
-
 ---
 
 ## [1.2.0] - 2026-04-08
