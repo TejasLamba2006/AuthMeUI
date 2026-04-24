@@ -1,6 +1,7 @@
 package com.github.TejasLamba2006.AuthMeUI.dialogs;
 
 import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
+import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import io.papermc.paper.dialog.Dialog;
 import net.kyori.adventure.text.Component;
@@ -13,10 +14,10 @@ public class DialogManager {
     private final RegistrationDialogBuilder registerBuilder;
     private final RulesDialogBuilder rulesBuilder;
 
-    public DialogManager(AuthMeUIPlugin plugin, SettingsManager settings) {
+    public DialogManager(AuthMeUIPlugin plugin, SettingsManager settings, AuthenticationBridge authBridge) {
         this.settings = settings;
         this.loginBuilder = new LoginDialogBuilder(settings);
-        this.registerBuilder = new RegistrationDialogBuilder(plugin, settings);
+        this.registerBuilder = new RegistrationDialogBuilder(settings, authBridge);
         this.rulesBuilder = new RulesDialogBuilder(plugin, settings);
     }
 

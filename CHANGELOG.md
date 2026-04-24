@@ -4,6 +4,32 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.3.1] - 2026-04-24
+
+### Registration fixes
+
+- Added support for AuthMe `registration.secondArg` modes in the dialog flow:
+  - `NONE`: registration now accepts a single password input.
+  - `CONFIRMATION`: registration requires password confirmation.
+  - `EMAIL_OPTIONAL` / `EMAIL_MANDATORY`: registration now uses an email-aware second field.
+- Registration now uses command-path submission for email modes so `EMAIL_MANDATORY` works with AuthMe's expected `/register <password> <email>` behavior.
+- Added explicit validation and user-facing errors for missing/invalid email and missing confirmation.
+
+### Stability improvements
+
+- Reworked post-submit registration verification to retry for a short window instead of checking once after a fixed 3 ticks.
+- This prevents false "Registration failed" dialogs when AuthMe registration state becomes visible a little later.
+- Added a post-join authentication dialog watchdog that re-opens the auth dialog for still unauthenticated players.
+- This helps recover the flow when external URL confirmation prompts close the dialog without authenticating.
+
+### Custom action button improvements
+
+- Added URL button support for configurable dialog actions using `type: url` (also accepts `open-url` and `open_url`).
+- URL actions now accept links via `template` (or `url`) and open external pages from the dialog button click.
+- Added URL validation and warning logs for missing/invalid links or unsupported URL schemes.
+
+---
+
 ## [1.3.0] - 2026-04-10
 
 ### Folia compatibility

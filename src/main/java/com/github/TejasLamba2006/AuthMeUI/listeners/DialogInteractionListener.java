@@ -4,6 +4,7 @@ import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
 import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge;
 import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge.AuthResult;
 import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge.RegistrationResult;
+import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge.RegistrationSecondArgMode;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import com.github.TejasLamba2006.AuthMeUI.dialogs.DialogIdentifiers;
 import com.github.TejasLamba2006.AuthMeUI.dialogs.DialogManager;
@@ -27,6 +28,8 @@ public class DialogInteractionListener implements Listener {
 
     private static final String PASSWORD_FIELD = "password";
     private static final String CONFIRM_FIELD = "confirm";
+    private static final int REGISTRATION_VERIFICATION_ATTEMPTS = 5;
+    private static final long REGISTRATION_VERIFICATION_DELAY_TICKS = 8L;
 
     private final AuthMeUIPlugin plugin;
     private final AuthenticationBridge authBridge;
@@ -194,16 +197,16 @@ public class DialogInteractionListener implements Listener {
             DialogResponseView response) {
 
         String enteredPassword = response.getText(PASSWORD_FIELD);
-        String confirmPassword = response.getText(CONFIRM_FIELD);
+        String secondArgument = response.getText(CONFIRM_FIELD);
 
-        if (isNullOrEmpty(enteredPassword) || isNullOrEmpty(confirmPassword)) {
-            Component error = settings.getMessage("register.fields-empty",
-                    "<red>Please fill in both password fields!</red>");
+        if (isNullOrEmpty(enteredPassword)) {
+            Component error = settings.getMessage("register.password-required",
+                    "<red>Please enter a password.</red>");
             audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
             return;
         }
 
-        RegistrationResult result = authBridge.attemptRegistrationByName(playerName, enteredPassword, confirmPassword);
+        RegistrationResult result = authBridge.attemptRegistrationByName(playerName, enteredPassword, secondArgument);
 
         switch (result) {
             case SUCCESS -> {
@@ -238,6 +241,26 @@ public class DialogInteractionListener implements Listener {
                 Component error = settings.getMessage("register.password-too-long",
                         "<red>Password cannot exceed <white>%max%</white> characters!</red>",
                         Map.of("max", String.valueOf(maxLength)));
+                audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
+            }
+            case SECOND_ARGUMENT_REQUIRED -> {
+                Component error = settings.getMessage("register.confirm-required",
+                        "<red>Please confirm your password.</red>");
+                audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
+            }
+            case EMAIL_REQUIRED -> {
+                Component error = settings.getMessage("register.email-required",
+                        "<red>Please enter your email address.</red>");
+                audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
+            }
+            case EMAIL_INVALID -> {
+                Component error = settings.getMessage("register.email-invalid",
+                        "<red>Please enter a valid email address.</red>");
+                audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
+            }
+            case UNSUPPORTED_IN_CONFIGURATION_PHASE -> {
+                Component error = settings.getMessage("register.prejoin-email-unsupported",
+                        "<red>Email-based registration is not supported in pre-join mode. Please use in-game mode.</red>");
                 audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
             }
             case INVALID_PASSWORD -> {
@@ -328,20 +351,23 @@ public class DialogInteractionListener implements Listener {
 
     private void handleRegistrationSubmission(Player player, DialogResponseView response) {
         String enteredPassword = response.getText(PASSWORD_FIELD);
-        String confirmPassword = response.getText(CONFIRM_FIELD);
+        String secondArgument = response.getText(CONFIRM_FIELD);
 
-        if (isNullOrEmpty(enteredPassword) || isNullOrEmpty(confirmPassword)) {
-            displayRegistrationWithError(player, "register.fields-empty",
-                    "<red>Please fill in both password fields!</red>");
+        if (isNullOrEmpty(enteredPassword)) {
+            displayRegistrationWithError(player, "register.password-required",
+                    "<red>Please enter a password.</red>");
             return;
         }
 
-        RegistrationResult result = authBridge.attemptRegistration(player, enteredPassword, confirmPassword);
+        RegistrationResult result = authBridge.attemptRegistration(player, enteredPassword, secondArgument);
+        RegistrationSecondArgMode secondArgMode = authBridge.getRegistrationSecondArgMode();
 
         switch (result) {
             case SUCCESS -> scheduleRegistrationVerification(player);
             case ALREADY_EXISTS -> displayLoginWithError(player, "register.already-registered",
                     "<yellow>You already have an account. Please login instead!</yellow>");
+            case SECOND_ARGUMENT_REQUIRED -> displayRegistrationWithError(player, "register.confirm-required",
+                    "<red>Please confirm your password.</red>");
             case PASSWORD_MISMATCH -> displayRegistrationWithError(player, "register.passwords-mismatch",
                     "<red>Passwords do not match. Please try again.</red>");
             case PASSWORD_TOO_SHORT -> {
@@ -356,6 +382,16 @@ public class DialogInteractionListener implements Listener {
                         "<red>Password cannot exceed <white>%max%</white> characters!</red>",
                         Map.of("max", String.valueOf(maxLength)));
             }
+            case EMAIL_REQUIRED -> displayRegistrationWithError(player, "register.email-required",
+                    "<red>Please enter your email address.</red>");
+            case EMAIL_INVALID -> displayRegistrationWithError(player, "register.email-invalid",
+                    "<red>Please enter a valid email address.</red>");
+            case UNSUPPORTED_IN_CONFIGURATION_PHASE -> displayRegistrationWithError(
+                    player,
+                    "register.prejoin-email-unsupported",
+                    secondArgMode.usesEmail()
+                            ? "<red>Email-based registration is unavailable in this mode. Please contact staff.</red>"
+                            : "<red>Registration mode is not supported right now. Please contact staff.</red>");
             case INVALID_PASSWORD -> displayRegistrationWithError(player, "register.password-invalid",
                     "<red>Invalid password format. Please try again.</red>");
             default -> displayRegistrationWithError(player, "register.failed",
@@ -411,18 +447,31 @@ public class DialogInteractionListener implements Listener {
     }
 
     private void scheduleRegistrationVerification(Player player) {
-        player.getScheduler().runDelayed(plugin, scheduledTask -> {
-            if (player.isOnline()) {
-                boolean isValid = authBridge.isPlayerAuthenticated(player)
-                        || authBridge.isPlayerRegistered(player.getName());
+        scheduleRegistrationVerification(player, 0);
+    }
 
-                if (!isValid) {
-                    Component errorMsg = settings.getMessage("register.failed",
-                            "<red>Registration failed. Please try again.</red>");
-                    player.showDialog(dialogManager.createRegistrationDialog(player, errorMsg));
-                }
+    private void scheduleRegistrationVerification(Player player, int attempt) {
+        player.getScheduler().runDelayed(plugin, scheduledTask -> {
+            if (!player.isOnline()) {
+                return;
             }
-        }, null, 3L);
+
+            boolean isValid = authBridge.isPlayerAuthenticated(player)
+                    || authBridge.isPlayerRegistered(player.getName());
+
+            if (isValid) {
+                return;
+            }
+
+            if (attempt + 1 < REGISTRATION_VERIFICATION_ATTEMPTS) {
+                scheduleRegistrationVerification(player, attempt + 1);
+                return;
+            }
+
+            Component errorMsg = settings.getMessage("register.failed",
+                    "<red>Registration failed. Please try again.</red>");
+            player.showDialog(dialogManager.createRegistrationDialog(player, errorMsg));
+        }, null, REGISTRATION_VERIFICATION_DELAY_TICKS);
     }
 
     private void scheduleDialogReopen(Player player, Runnable action) {

@@ -49,6 +49,9 @@ login-dialog:
   #   - type: command
   #     label: "<yellow>Help</yellow>"
   #     template: "/help login"
+  #   - type: url
+  #     label: "<aqua>Website</aqua>"
+  #     template: "https://example.com/help"
 
 # Registration dialog configuration
 register-dialog:
@@ -58,6 +61,7 @@ register-dialog:
     - "<dark_gray>Your password protects your progress.</dark_gray>"
   password-label: "Password"
   confirm-label: "Confirm Password"
+  email-label: "Email Address"
   submit-button: "<green>Register</green>"
 
 # Server rules dialog (shown before registration)
@@ -93,7 +97,12 @@ messages:
 
   # Registration messages
   register:
-    fields-empty: "<red>Please fill in both password fields!</red>"
+    password-required: "<red>Please enter a password.</red>"
+    fields-empty: "<red>Please enter a password.</red>"
+    confirm-required: "<red>Please confirm your password.</red>"
+    email-required: "<red>Please enter your email address.</red>"
+    email-invalid: "<red>Please enter a valid email address.</red>"
+    prejoin-email-unsupported: "<red>Email-based registration is not supported in pre-join mode. Please use in-game mode.</red>"
     passwords-mismatch: "<red>Passwords do not match. Please try again.</red>"
     password-too-short: "<red>Password must be at least <white>%min%</white> characters!</red>"
     password-too-long: "<red>Password cannot exceed <white>%max%</white> characters!</red>"

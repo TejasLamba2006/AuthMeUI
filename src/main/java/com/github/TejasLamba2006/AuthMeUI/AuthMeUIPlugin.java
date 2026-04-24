@@ -51,7 +51,7 @@ public final class AuthMeUIPlugin extends JavaPlugin {
 
     private void initializeServices() {
         this.authBridge = new AuthenticationBridge(this);
-        this.dialogManager = new DialogManager(this, settingsManager);
+        this.dialogManager = new DialogManager(this, settingsManager, authBridge);
 
         if (!authBridge.isConnected()) {
             getLogger().log(Level.SEVERE, "Failed to connect to AuthMe! Plugin functionality will be limited.");

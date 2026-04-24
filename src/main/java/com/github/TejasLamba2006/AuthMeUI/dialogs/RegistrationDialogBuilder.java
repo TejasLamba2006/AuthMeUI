@@ -1,6 +1,7 @@
 package com.github.TejasLamba2006.AuthMeUI.dialogs;
 
-import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
+import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge;
+import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge.RegistrationSecondArgMode;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.registry.data.dialog.ActionButton;
@@ -24,12 +25,12 @@ public class RegistrationDialogBuilder {
     private static final String CONFIRM_INPUT_KEY = "confirm";
     private static final int MAX_PASSWORD_INPUT_LENGTH = 128;
 
-    private final AuthMeUIPlugin plugin;
     private final SettingsManager settings;
+    private final AuthenticationBridge authBridge;
 
-    public RegistrationDialogBuilder(AuthMeUIPlugin plugin, SettingsManager settings) {
-        this.plugin = plugin;
+    public RegistrationDialogBuilder(SettingsManager settings, AuthenticationBridge authBridge) {
         this.settings = settings;
+        this.authBridge = authBridge;
     }
 
     public Dialog construct(Player player) {
@@ -82,14 +83,22 @@ public class RegistrationDialogBuilder {
                 .initial("")
                 .build();
 
-        TextDialogInput confirmField = DialogInput.text(CONFIRM_INPUT_KEY, settings.getRegisterConfirmLabel())
+        RegistrationSecondArgMode secondArgMode = authBridge.getRegistrationSecondArgMode();
+
+        if (secondArgMode == RegistrationSecondArgMode.NONE) {
+            return List.of(passwordField);
+        }
+
+        TextDialogInput secondField = DialogInput.text(
+                CONFIRM_INPUT_KEY,
+                secondArgMode.usesEmail() ? settings.getRegisterEmailLabel() : settings.getRegisterConfirmLabel())
                 .width(settings.getInputWidth())
                 .labelVisible(true)
                 .maxLength(MAX_PASSWORD_INPUT_LENGTH)
                 .initial("")
                 .build();
 
-        return List.of(passwordField, confirmField);
+        return List.of(passwordField, secondField);
     }
 
     private List<ActionButton> buildActionButtons() {

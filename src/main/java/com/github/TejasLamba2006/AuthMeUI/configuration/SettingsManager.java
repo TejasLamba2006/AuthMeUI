@@ -4,15 +4,33 @@ import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
 import io.papermc.paper.registry.data.dialog.ActionButton;
 import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.configuration.file.FileConfiguration;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Level;
 
 public class SettingsManager {
+
+    private static final String LOGIN_ACTIONS_PATH = "login-dialog.actions";
+    private static final String ACTION_TYPE_KEY = "type";
+    private static final String ACTION_LABEL_KEY = "label";
+    private static final String ACTION_TEMPLATE_KEY = "template";
+    private static final String ACTION_URL_KEY = "url";
+    private static final String ACTION_TYPE_SUBMIT = "submit";
+    private static final String ACTION_TYPE_CANCEL = "cancel";
+    private static final String ACTION_TYPE_COMMAND = "command";
+    private static final String ACTION_TYPE_URL = "url";
+    private static final String ACTION_TYPE_OPEN_URL_DASH = "open-url";
+    private static final String ACTION_TYPE_OPEN_URL_UNDERSCORE = "open_url";
+    private static final String ACTION_LABEL_DEFAULT = "<gray>Button</gray>";
+    private static final String ACTION_COMMAND_DEFAULT = "/help";
+    private static final String URL_ACTION_WARNING = "Skipping URL action in %s: %s";
 
     private final AuthMeUIPlugin plugin;
     private final MiniMessage miniMessage;
@@ -108,6 +126,11 @@ public class SettingsManager {
         return miniMessage.deserialize(raw);
     }
 
+    public Component getRegisterEmailLabel() {
+        String raw = config.getString("register-dialog.email-label", "Email Address");
+        return miniMessage.deserialize(raw);
+    }
+
     public Component getRegisterSubmitButton() {
         String raw = config.getString("register-dialog.submit-button", "<green>Register</green>");
         return miniMessage.deserialize(raw);
@@ -174,27 +197,14 @@ public class SettingsManager {
     public List<ActionButton> buildActionButtons(String configSection, ActionButton primaryAction) {
         List<ActionButton> buttons = new ArrayList<>();
         List<Map<?, ?>> rawActions = config.getMapList(configSection + ".actions");
+        String actionPath = configSection + ".actions";
 
         boolean hasPrimaryAction = false;
 
-        if (rawActions != null && !rawActions.isEmpty()) {
+        if (!rawActions.isEmpty()) {
             for (Map<?, ?> actionMap : rawActions) {
-                String type = extractString(actionMap, "type", "submit").toLowerCase(Locale.ROOT);
-                String labelText = extractString(actionMap, "label", "<gray>Button</gray>");
-                Component label = miniMessage.deserialize(labelText);
-
-                switch (type) {
-                    case "submit" -> {
-                        buttons.add(primaryAction);
-                        hasPrimaryAction = true;
-                    }
-                    case "command" -> {
-                        String commandTemplate = extractString(actionMap, "template", "/help");
-                        buttons.add(
-                                ActionButton.builder(label)
-                                        .action(DialogAction.commandTemplate(commandTemplate))
-                                        .build());
-                    }
+                if (processConfiguredAction(buttons, actionMap, primaryAction, actionPath)) {
+                    hasPrimaryAction = true;
                 }
             }
         }
@@ -208,37 +218,22 @@ public class SettingsManager {
 
     public List<ActionButton> buildLoginActionButtons(ActionButton submitAction, ActionButton cancelAction) {
         List<ActionButton> buttons = new ArrayList<>();
-        List<Map<?, ?>> rawActions = config.getMapList("login-dialog.actions");
+        List<Map<?, ?>> rawActions = config.getMapList(LOGIN_ACTIONS_PATH);
 
         boolean hasSubmitAction = false;
         boolean hasCancelAction = false;
         boolean cancelEnabled = isLoginCancelEnabled();
 
-        if (rawActions != null && !rawActions.isEmpty()) {
+        if (!rawActions.isEmpty()) {
             for (Map<?, ?> actionMap : rawActions) {
-                String type = extractString(actionMap, "type", "submit").toLowerCase(Locale.ROOT);
-                String labelText = extractString(actionMap, "label", "<gray>Button</gray>");
-                Component label = miniMessage.deserialize(labelText);
-
-                switch (type) {
-                    case "submit" -> {
-                        buttons.add(submitAction);
-                        hasSubmitAction = true;
-                    }
-                    case "cancel" -> {
-                        if (cancelEnabled) {
-                            buttons.add(cancelAction);
-                            hasCancelAction = true;
-                        }
-                    }
-                    case "command" -> {
-                        String commandTemplate = extractString(actionMap, "template", "/help");
-                        buttons.add(
-                                ActionButton.builder(label)
-                                        .action(DialogAction.commandTemplate(commandTemplate))
-                                        .build());
-                    }
-                }
+                LoginActionResult result = processLoginConfiguredAction(
+                        buttons,
+                        actionMap,
+                        submitAction,
+                        cancelAction,
+                        cancelEnabled);
+                hasSubmitAction = hasSubmitAction || result.submitHandled();
+                hasCancelAction = hasCancelAction || result.cancelHandled();
             }
         }
 
@@ -251,6 +246,133 @@ public class SettingsManager {
         }
 
         return buttons;
+    }
+
+    private boolean processConfiguredAction(
+            List<ActionButton> buttons,
+            Map<?, ?> actionMap,
+            ActionButton primaryAction,
+            String actionPath) {
+
+        String type = extractString(actionMap, ACTION_TYPE_KEY, ACTION_TYPE_SUBMIT).toLowerCase(Locale.ROOT);
+        Component label = miniMessage.deserialize(extractString(actionMap, ACTION_LABEL_KEY, ACTION_LABEL_DEFAULT));
+
+        switch (type) {
+            case ACTION_TYPE_SUBMIT -> {
+                buttons.add(primaryAction);
+                return true;
+            }
+            case ACTION_TYPE_COMMAND -> buttons.add(buildCommandActionButton(label, actionMap));
+            case ACTION_TYPE_URL, ACTION_TYPE_OPEN_URL_DASH, ACTION_TYPE_OPEN_URL_UNDERSCORE -> {
+                ActionButton urlActionButton = buildUrlActionButton(label, actionMap, actionPath);
+                if (urlActionButton != null) {
+                    buttons.add(urlActionButton);
+                }
+            }
+            default -> {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private LoginActionResult processLoginConfiguredAction(
+            List<ActionButton> buttons,
+            Map<?, ?> actionMap,
+            ActionButton submitAction,
+            ActionButton cancelAction,
+            boolean cancelEnabled) {
+
+        String type = extractString(actionMap, ACTION_TYPE_KEY, ACTION_TYPE_SUBMIT).toLowerCase(Locale.ROOT);
+        Component label = miniMessage.deserialize(extractString(actionMap, ACTION_LABEL_KEY, ACTION_LABEL_DEFAULT));
+
+        switch (type) {
+            case ACTION_TYPE_SUBMIT -> {
+                buttons.add(submitAction);
+                return LoginActionResult.SUBMIT;
+            }
+            case ACTION_TYPE_CANCEL -> {
+                if (!cancelEnabled) {
+                    return LoginActionResult.NONE;
+                }
+
+                buttons.add(cancelAction);
+                return LoginActionResult.CANCEL;
+            }
+            case ACTION_TYPE_COMMAND -> buttons.add(buildCommandActionButton(label, actionMap));
+            case ACTION_TYPE_URL, ACTION_TYPE_OPEN_URL_DASH, ACTION_TYPE_OPEN_URL_UNDERSCORE -> {
+                ActionButton urlActionButton = buildUrlActionButton(label, actionMap, LOGIN_ACTIONS_PATH);
+                if (urlActionButton != null) {
+                    buttons.add(urlActionButton);
+                }
+            }
+            default -> {
+                return LoginActionResult.NONE;
+            }
+        }
+
+        return LoginActionResult.NONE;
+    }
+
+    private ActionButton buildCommandActionButton(Component label, Map<?, ?> actionMap) {
+        String commandTemplate = extractString(actionMap, ACTION_TEMPLATE_KEY, ACTION_COMMAND_DEFAULT);
+        return ActionButton.builder(label)
+                .action(DialogAction.commandTemplate(commandTemplate))
+                .build();
+    }
+
+    private ActionButton buildUrlActionButton(Component label, Map<?, ?> actionMap, String actionPath) {
+        String rawUrl = extractString(actionMap, ACTION_TEMPLATE_KEY, extractString(actionMap, ACTION_URL_KEY, ""))
+                .trim();
+        if (rawUrl.isBlank()) {
+            plugin.getLogger().log(Level.WARNING, () -> URL_ACTION_WARNING.formatted(
+                    actionPath,
+                    "'template' (or 'url') is empty."));
+            return null;
+        }
+
+        try {
+            URI uri = URI.create(rawUrl);
+            String scheme = uri.getScheme();
+            if (scheme == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                plugin.getLogger().log(Level.WARNING, () -> URL_ACTION_WARNING.formatted(
+                        actionPath,
+                        "only http/https URLs are supported (got '" + rawUrl + "')."));
+                return null;
+            }
+
+            return ActionButton.builder(label)
+                    .action(DialogAction.staticAction(ClickEvent.openUrl(uri.toString())))
+                    .build();
+        } catch (IllegalArgumentException exception) {
+            plugin.getLogger().log(Level.WARNING, () -> URL_ACTION_WARNING.formatted(
+                    actionPath,
+                    "invalid URL '" + rawUrl + "'."));
+            return null;
+        }
+    }
+
+    private enum LoginActionResult {
+        NONE(false, false),
+        SUBMIT(true, false),
+        CANCEL(false, true);
+
+        private final boolean submitHandled;
+        private final boolean cancelHandled;
+
+        LoginActionResult(boolean submitHandled, boolean cancelHandled) {
+            this.submitHandled = submitHandled;
+            this.cancelHandled = cancelHandled;
+        }
+
+        public boolean submitHandled() {
+            return submitHandled;
+        }
+
+        public boolean cancelHandled() {
+            return cancelHandled;
+        }
     }
 
     private String extractString(Map<?, ?> map, String key, String defaultValue) {

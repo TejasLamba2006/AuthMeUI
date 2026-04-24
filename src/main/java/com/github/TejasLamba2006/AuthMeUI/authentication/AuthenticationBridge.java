@@ -6,13 +6,18 @@ import org.bukkit.plugin.Plugin;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
+import java.util.function.Supplier;
 import java.util.logging.Level;
+import java.util.regex.Pattern;
 
 public class AuthenticationBridge {
 
     private static final int DEFAULT_MIN_PASSWORD_LENGTH = 5;
     private static final int DEFAULT_MAX_PASSWORD_LENGTH = 30;
     private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 10;
+    private static final RegistrationSecondArgMode DEFAULT_REGISTRATION_SECOND_ARG_MODE = RegistrationSecondArgMode.CONFIRMATION;
+    private static final Pattern BASIC_EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final Plugin plugin;
     private final AuthMeApi authMeApi;
@@ -21,6 +26,7 @@ public class AuthenticationBridge {
     private volatile int sessionTimeoutMinutes;
     private volatile int minPasswordLength;
     private volatile int maxPasswordLength;
+    private volatile RegistrationSecondArgMode registrationSecondArgMode;
 
     public AuthenticationBridge(Plugin plugin) {
         this.plugin = plugin;
@@ -60,6 +66,7 @@ public class AuthenticationBridge {
         int cachedSessionTimeoutMinutes = DEFAULT_SESSION_TIMEOUT_MINUTES;
         int cachedMinPasswordLength = DEFAULT_MIN_PASSWORD_LENGTH;
         int cachedMaxPasswordLength = DEFAULT_MAX_PASSWORD_LENGTH;
+        RegistrationSecondArgMode cachedRegistrationSecondArgMode = DEFAULT_REGISTRATION_SECOND_ARG_MODE;
 
         Plugin authMe = plugin.getServer().getPluginManager().getPlugin("AuthMe");
         if (authMe != null && authMe.isEnabled()) {
@@ -73,12 +80,17 @@ public class AuthenticationBridge {
             cachedMaxPasswordLength = authMe.getConfig().getInt(
                     "security.passwordMaxLength",
                     DEFAULT_MAX_PASSWORD_LENGTH);
+            String secondArgRaw = authMe.getConfig().getString(
+                    "registration.secondArg",
+                    DEFAULT_REGISTRATION_SECOND_ARG_MODE.name());
+            cachedRegistrationSecondArgMode = RegistrationSecondArgMode.fromConfig(secondArgRaw);
         }
 
         this.sessionsEnabled = cachedSessionsEnabled;
         this.sessionTimeoutMinutes = cachedSessionTimeoutMinutes;
         this.minPasswordLength = cachedMinPasswordLength;
         this.maxPasswordLength = cachedMaxPasswordLength;
+        this.registrationSecondArgMode = cachedRegistrationSecondArgMode;
     }
 
     /**
@@ -143,6 +155,10 @@ public class AuthenticationBridge {
         return maxPasswordLength;
     }
 
+    public RegistrationSecondArgMode getRegistrationSecondArgMode() {
+        return registrationSecondArgMode;
+    }
+
     public AuthResult attemptLogin(Player player, String password) {
         if (!isConnected()) {
             return AuthResult.SERVICE_UNAVAILABLE;
@@ -205,59 +221,50 @@ public class AuthenticationBridge {
         }
     }
 
-    public RegistrationResult attemptRegistration(Player player, String password, String confirmPassword) {
+    public RegistrationResult attemptRegistration(Player player, String password, String secondArgument) {
         if (!isConnected()) {
             return RegistrationResult.SERVICE_UNAVAILABLE;
         }
 
         String playerName = player.getName();
-
-        if (isPlayerRegistered(playerName)) {
-            return RegistrationResult.ALREADY_EXISTS;
+        RegistrationResult validationResult = validateRegistrationInput(playerName, password);
+        if (validationResult != null) {
+            return validationResult;
         }
 
-        if (password == null || password.isBlank()) {
-            return RegistrationResult.INVALID_PASSWORD;
-        }
-
-        int minLength = fetchMinPasswordLength();
-        int maxLength = fetchMaxPasswordLength();
-
-        if (password.length() < minLength) {
-            return RegistrationResult.PASSWORD_TOO_SHORT;
-        }
-
-        if (password.length() > maxLength) {
-            return RegistrationResult.PASSWORD_TOO_LONG;
-        }
-
-        if (confirmPassword != null && !confirmPassword.isBlank() && !password.equals(confirmPassword)) {
-            return RegistrationResult.PASSWORD_MISMATCH;
-        }
-
-        try {
-            authMeApi.forceRegister(player, password, true);
-            return RegistrationResult.SUCCESS;
-        } catch (Exception ex) {
-            plugin.getLogger().log(Level.WARNING, "Registration failed for " + playerName, ex);
-            return RegistrationResult.ERROR;
-        }
+        return resolveInGameRegistrationResult(
+                player,
+                playerName,
+                password,
+                normalizeSecondArgument(secondArgument));
     }
 
     /**
      * Attempt registration using only the player name (for configuration phase).
      * This registers the player without requiring a Player object.
      *
-     * @param playerName      the player's name
-     * @param password        the password to register with
-     * @param confirmPassword the password confirmation
+     * @param playerName     the player's name
+     * @param password       the password to register with
+     * @param secondArgument the configured second argument for registration
      * @return the registration result
      */
-    public RegistrationResult attemptRegistrationByName(String playerName, String password, String confirmPassword) {
+    public RegistrationResult attemptRegistrationByName(String playerName, String password, String secondArgument) {
         if (!isConnected()) {
             return RegistrationResult.SERVICE_UNAVAILABLE;
         }
 
+        RegistrationResult validationResult = validateRegistrationInput(playerName, password);
+        if (validationResult != null) {
+            return validationResult;
+        }
+
+        return resolveConfigurationPhaseRegistrationResult(
+                playerName,
+                password,
+                normalizeSecondArgument(secondArgument));
+    }
+
+    private RegistrationResult validateRegistrationInput(String playerName, String password) {
         if (isPlayerRegistered(playerName)) {
             return RegistrationResult.ALREADY_EXISTS;
         }
@@ -277,18 +284,142 @@ public class AuthenticationBridge {
             return RegistrationResult.PASSWORD_TOO_LONG;
         }
 
-        if (confirmPassword != null && !confirmPassword.isBlank() && !password.equals(confirmPassword)) {
+        return null;
+    }
+
+    private RegistrationResult resolveInGameRegistrationResult(
+            Player player,
+            String playerName,
+            String password,
+            String secondArgument) {
+
+        return switch (registrationSecondArgMode) {
+            case CONFIRMATION -> handleConfirmationSecondArgument(
+                    password,
+                    secondArgument,
+                    () -> registerWithApi(player, playerName, password));
+            case EMAIL_MANDATORY -> handleMandatoryEmailSecondArgument(
+                    secondArgument,
+                    () -> registerWithCommand(player, playerName, password, secondArgument));
+            case EMAIL_OPTIONAL -> handleOptionalEmailSecondArgument(
+                    secondArgument,
+                    () -> registerWithCommand(player, playerName, password, secondArgument),
+                    () -> registerWithApi(player, playerName, password));
+            case NONE -> registerWithApi(player, playerName, password);
+        };
+    }
+
+    private RegistrationResult resolveConfigurationPhaseRegistrationResult(
+            String playerName,
+            String password,
+            String secondArgument) {
+
+        return switch (registrationSecondArgMode) {
+            case CONFIRMATION -> handleConfirmationSecondArgument(
+                    password,
+                    secondArgument,
+                    () -> registerByNameWithApi(playerName, password));
+            case EMAIL_MANDATORY -> handleMandatoryEmailSecondArgument(
+                    secondArgument,
+                    () -> RegistrationResult.UNSUPPORTED_IN_CONFIGURATION_PHASE);
+            case EMAIL_OPTIONAL -> handleOptionalEmailSecondArgument(
+                    secondArgument,
+                    () -> RegistrationResult.UNSUPPORTED_IN_CONFIGURATION_PHASE,
+                    () -> registerByNameWithApi(playerName, password));
+            case NONE -> registerByNameWithApi(playerName, password);
+        };
+    }
+
+    private RegistrationResult handleConfirmationSecondArgument(
+            String password,
+            String secondArgument,
+            Supplier<RegistrationResult> successAction) {
+
+        if (secondArgument == null || secondArgument.isBlank()) {
+            return RegistrationResult.SECOND_ARGUMENT_REQUIRED;
+        }
+
+        if (!password.equals(secondArgument)) {
             return RegistrationResult.PASSWORD_MISMATCH;
         }
 
+        return successAction.get();
+    }
+
+    private RegistrationResult handleMandatoryEmailSecondArgument(
+            String secondArgument,
+            Supplier<RegistrationResult> successAction) {
+
+        if (secondArgument == null || secondArgument.isBlank()) {
+            return RegistrationResult.EMAIL_REQUIRED;
+        }
+
+        if (!isValidEmail(secondArgument)) {
+            return RegistrationResult.EMAIL_INVALID;
+        }
+
+        return successAction.get();
+    }
+
+    private RegistrationResult handleOptionalEmailSecondArgument(
+            String secondArgument,
+            Supplier<RegistrationResult> withEmailAction,
+            Supplier<RegistrationResult> withoutEmailAction) {
+
+        if (secondArgument == null || secondArgument.isBlank()) {
+            return withoutEmailAction.get();
+        }
+
+        if (!isValidEmail(secondArgument)) {
+            return RegistrationResult.EMAIL_INVALID;
+        }
+
+        return withEmailAction.get();
+    }
+
+    private String normalizeSecondArgument(String secondArgument) {
+        return secondArgument == null ? null : secondArgument.trim();
+    }
+
+    private RegistrationResult registerWithApi(Player player, String playerName, String password) {
         try {
-            // Register the player using AuthMe API with player name only
+            authMeApi.forceRegister(player, password, true);
+            return RegistrationResult.SUCCESS;
+        } catch (Exception ex) {
+            plugin.getLogger().log(Level.WARNING, ex, () -> "Registration failed for " + playerName);
+            return RegistrationResult.ERROR;
+        }
+    }
+
+    private RegistrationResult registerByNameWithApi(String playerName, String password) {
+        try {
             authMeApi.registerPlayer(playerName, password);
             return RegistrationResult.SUCCESS;
         } catch (Exception ex) {
-            plugin.getLogger().log(Level.WARNING, "Registration failed for " + playerName, ex);
+            plugin.getLogger().log(Level.WARNING, ex, () -> "Registration failed for " + playerName);
             return RegistrationResult.ERROR;
         }
+    }
+
+    private RegistrationResult registerWithCommand(Player player, String playerName, String password,
+            String secondArg) {
+        String commandLine = "register " + password + " " + secondArg;
+
+        try {
+            boolean commandAccepted = plugin.getServer().dispatchCommand(player, commandLine);
+            if (!commandAccepted) {
+                plugin.getLogger().log(Level.WARNING, () -> "Registration command was not accepted for " + playerName);
+                return RegistrationResult.ERROR;
+            }
+            return RegistrationResult.SUCCESS;
+        } catch (Exception ex) {
+            plugin.getLogger().log(Level.WARNING, ex, () -> "Registration command failed for " + playerName);
+            return RegistrationResult.ERROR;
+        }
+    }
+
+    private boolean isValidEmail(String value) {
+        return value != null && BASIC_EMAIL_PATTERN.matcher(value.trim()).matches();
     }
 
     public enum AuthResult {
@@ -303,11 +434,38 @@ public class AuthenticationBridge {
     public enum RegistrationResult {
         SUCCESS,
         ALREADY_EXISTS,
+        SECOND_ARGUMENT_REQUIRED,
         PASSWORD_MISMATCH,
         PASSWORD_TOO_SHORT,
         PASSWORD_TOO_LONG,
+        EMAIL_REQUIRED,
+        EMAIL_INVALID,
+        UNSUPPORTED_IN_CONFIGURATION_PHASE,
         INVALID_PASSWORD,
         SERVICE_UNAVAILABLE,
         ERROR
+    }
+
+    public enum RegistrationSecondArgMode {
+        NONE,
+        CONFIRMATION,
+        EMAIL_OPTIONAL,
+        EMAIL_MANDATORY;
+
+        public static RegistrationSecondArgMode fromConfig(String value) {
+            if (value == null || value.isBlank()) {
+                return DEFAULT_REGISTRATION_SECOND_ARG_MODE;
+            }
+
+            try {
+                return RegistrationSecondArgMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+                return DEFAULT_REGISTRATION_SECOND_ARG_MODE;
+            }
+        }
+
+        public boolean usesEmail() {
+            return this == EMAIL_OPTIONAL || this == EMAIL_MANDATORY;
+        }
     }
 }
