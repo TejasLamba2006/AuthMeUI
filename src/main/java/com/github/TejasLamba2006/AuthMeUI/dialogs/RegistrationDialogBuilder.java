@@ -38,7 +38,7 @@ public class RegistrationDialogBuilder {
     }
 
     public Dialog construct(Player player, Component errorNotice) {
-        List<DialogBody> contentSections = buildBodyContent();
+        List<DialogBody> contentSections = buildBodyContent(player);
 
         if (errorNotice != null) {
             contentSections.add(DialogBody.plainMessage(errorNotice));
@@ -61,11 +61,11 @@ public class RegistrationDialogBuilder {
         });
     }
 
-    private List<DialogBody> buildBodyContent() {
+    private List<DialogBody> buildBodyContent(Player player) {
         List<DialogBody> content = new ArrayList<>();
 
         for (String line : settings.getRegisterBodyRaw()) {
-            content.add(DialogBody.plainMessage(settings.parseText(line)));
+            content.add(DialogBody.plainMessage(settings.parseText(line, player)));
         }
 
         if (content.isEmpty()) {

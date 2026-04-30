@@ -1,6 +1,7 @@
 package com.github.TejasLamba2006.AuthMeUI.authentication;
 
 import fr.xephi.authme.api.v3.AuthMeApi;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -70,19 +71,32 @@ public class AuthenticationBridge {
 
         Plugin authMe = plugin.getServer().getPluginManager().getPlugin("AuthMe");
         if (authMe != null && authMe.isEnabled()) {
-            cachedSessionsEnabled = authMe.getConfig().getBoolean("settings.sessions.enabled", false);
-            cachedSessionTimeoutMinutes = authMe.getConfig().getInt(
-                    "settings.sessions.timeout",
-                    DEFAULT_SESSION_TIMEOUT_MINUTES);
-            cachedMinPasswordLength = authMe.getConfig().getInt(
-                    "security.minPasswordLength",
-                    DEFAULT_MIN_PASSWORD_LENGTH);
-            cachedMaxPasswordLength = authMe.getConfig().getInt(
-                    "security.passwordMaxLength",
-                    DEFAULT_MAX_PASSWORD_LENGTH);
-            String secondArgRaw = authMe.getConfig().getString(
-                    "registration.secondArg",
-                    DEFAULT_REGISTRATION_SECOND_ARG_MODE.name());
+            FileConfiguration authConfig = authMe.getConfig();
+            cachedSessionsEnabled = readBooleanWithFallback(
+                authConfig,
+                "settings.sessions.enabled",
+                "sessions.enabled",
+                false);
+            cachedSessionTimeoutMinutes = readIntWithFallback(
+                authConfig,
+                "settings.sessions.timeout",
+                "sessions.timeout",
+                DEFAULT_SESSION_TIMEOUT_MINUTES);
+            cachedMinPasswordLength = readIntWithFallback(
+                authConfig,
+                "settings.security.minPasswordLength",
+                "security.minPasswordLength",
+                DEFAULT_MIN_PASSWORD_LENGTH);
+            cachedMaxPasswordLength = readIntWithFallback(
+                authConfig,
+                "settings.security.passwordMaxLength",
+                "security.passwordMaxLength",
+                DEFAULT_MAX_PASSWORD_LENGTH);
+            String secondArgRaw = readStringWithFallback(
+                authConfig,
+                "settings.registration.secondArg",
+                "registration.secondArg",
+                DEFAULT_REGISTRATION_SECOND_ARG_MODE.name());
             cachedRegistrationSecondArgMode = RegistrationSecondArgMode.fromConfig(secondArgRaw);
         }
 
@@ -91,6 +105,42 @@ public class AuthenticationBridge {
         this.minPasswordLength = cachedMinPasswordLength;
         this.maxPasswordLength = cachedMaxPasswordLength;
         this.registrationSecondArgMode = cachedRegistrationSecondArgMode;
+    }
+
+    private boolean readBooleanWithFallback(
+            FileConfiguration config,
+            String preferredPath,
+            String fallbackPath,
+            boolean defaultValue) {
+
+        if (config.contains(preferredPath)) {
+            return config.getBoolean(preferredPath, defaultValue);
+        }
+        return config.getBoolean(fallbackPath, defaultValue);
+    }
+
+    private int readIntWithFallback(
+            FileConfiguration config,
+            String preferredPath,
+            String fallbackPath,
+            int defaultValue) {
+
+        if (config.contains(preferredPath)) {
+            return config.getInt(preferredPath, defaultValue);
+        }
+        return config.getInt(fallbackPath, defaultValue);
+    }
+
+    private String readStringWithFallback(
+            FileConfiguration config,
+            String preferredPath,
+            String fallbackPath,
+            String defaultValue) {
+
+        if (config.contains(preferredPath)) {
+            return config.getString(preferredPath, defaultValue);
+        }
+        return config.getString(fallbackPath, defaultValue);
     }
 
     /**

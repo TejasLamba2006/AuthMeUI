@@ -1,6 +1,5 @@
 package com.github.TejasLamba2006.AuthMeUI.dialogs;
 
-import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.registry.data.dialog.ActionButton;
@@ -34,7 +33,7 @@ public class LoginDialogBuilder {
     }
 
     public Dialog construct(Player player, Component errorNotice) {
-        List<DialogBody> contentSections = buildBodyContent();
+        List<DialogBody> contentSections = buildBodyContent(player);
 
         if (errorNotice != null) {
             contentSections.add(DialogBody.plainMessage(errorNotice));
@@ -57,11 +56,11 @@ public class LoginDialogBuilder {
         });
     }
 
-    private List<DialogBody> buildBodyContent() {
+    private List<DialogBody> buildBodyContent(Player player) {
         List<DialogBody> content = new ArrayList<>();
 
         for (String line : settings.getLoginBodyRaw()) {
-            content.add(DialogBody.plainMessage(settings.parseText(line)));
+            content.add(DialogBody.plainMessage(settings.parseText(line, player)));
         }
 
         if (content.isEmpty()) {
@@ -85,10 +84,14 @@ public class LoginDialogBuilder {
                 .action(DialogAction.customClick(DialogIdentifiers.LOGIN_SUBMIT, null))
                 .build();
 
+        ActionButton forgotButton = ActionButton.builder(settings.getLoginForgotButton())
+            .action(DialogAction.commandTemplate(settings.getLoginForgotCommandTemplate()))
+            .build();
+
         ActionButton cancelButton = ActionButton.builder(settings.getLoginCancelButton())
                 .action(DialogAction.customClick(DialogIdentifiers.LOGIN_CANCEL, null))
                 .build();
 
-        return settings.buildLoginActionButtons(submitButton, cancelButton);
+        return settings.buildLoginActionButtons(submitButton, cancelButton, forgotButton);
     }
 }

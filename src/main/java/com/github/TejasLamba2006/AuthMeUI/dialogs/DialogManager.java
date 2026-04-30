@@ -1,6 +1,5 @@
 package com.github.TejasLamba2006.AuthMeUI.dialogs;
 
-import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
 import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import io.papermc.paper.dialog.Dialog;
@@ -14,11 +13,11 @@ public class DialogManager {
     private final RegistrationDialogBuilder registerBuilder;
     private final RulesDialogBuilder rulesBuilder;
 
-    public DialogManager(AuthMeUIPlugin plugin, SettingsManager settings, AuthenticationBridge authBridge) {
+    public DialogManager(SettingsManager settings, AuthenticationBridge authBridge) {
         this.settings = settings;
         this.loginBuilder = new LoginDialogBuilder(settings);
         this.registerBuilder = new RegistrationDialogBuilder(settings, authBridge);
-        this.rulesBuilder = new RulesDialogBuilder(plugin, settings);
+        this.rulesBuilder = new RulesDialogBuilder(settings);
     }
 
     // ==================== Player-based methods (for in-game use)

@@ -1,6 +1,5 @@
 package com.github.TejasLamba2006.AuthMeUI.dialogs;
 
-import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.registry.data.dialog.ActionButton;
@@ -19,16 +18,14 @@ import java.util.List;
 
 public class RulesDialogBuilder {
 
-    private final AuthMeUIPlugin plugin;
     private final SettingsManager settings;
 
-    public RulesDialogBuilder(AuthMeUIPlugin plugin, SettingsManager settings) {
-        this.plugin = plugin;
+    public RulesDialogBuilder(SettingsManager settings) {
         this.settings = settings;
     }
 
     public Dialog construct(Player player) {
-        List<DialogBody> contentSections = buildBodyContent();
+        List<DialogBody> contentSections = buildBodyContent(player);
         List<DialogInput> inputFields = buildInputFields();
         ActionButton confirmButton = buildConfirmButton();
 
@@ -49,11 +46,11 @@ public class RulesDialogBuilder {
         });
     }
 
-    private List<DialogBody> buildBodyContent() {
+    private List<DialogBody> buildBodyContent(Player player) {
         List<DialogBody> content = new ArrayList<>();
 
         for (String line : settings.getRulesBodyRaw()) {
-            content.add(DialogBody.plainMessage(settings.parseText(line)));
+            content.add(DialogBody.plainMessage(settings.parseText(line, player)));
         }
 
         if (content.isEmpty()) {

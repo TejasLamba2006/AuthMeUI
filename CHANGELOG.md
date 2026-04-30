@@ -4,6 +4,20 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.3.2] - 2026-04-26
+
+### Hotfix
+
+- Fixed AuthMe config path detection for registration/security settings when forks expose them under `settings.*`.
+- `registration.secondArg` is now resolved with compatibility fallbacks, so `EMAIL_MANDATORY` is detected correctly in affected setups.
+- Added a default "Forgot Password" action button to the login dialog (configurable via `login-dialog.forgot-button-*`).
+- Added `type: forgot` support in `login-dialog.actions` for explicit action ordering in custom button layouts.
+- Added placeholder parsing support for dialog body text:
+  - Parses PlaceholderAPI placeholders when available (player-bound dialogs).
+  - Parses ItemsAdder font tokens (e.g. `:token:` style) when ItemsAdder is installed.
+
+---
+
 ## [1.3.1] - 2026-04-24
 
 ### Registration fixes

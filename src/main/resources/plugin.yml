@@ -12,6 +12,7 @@ depend:
 
 softdepend:
   - PlaceholderAPI
+  - ItemsAdder
 
 commands:
   authmeui:

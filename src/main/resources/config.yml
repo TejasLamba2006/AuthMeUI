@@ -38,12 +38,17 @@ login-dialog:
     - "<dark_gray>If you forgot your password, contact staff.</dark_gray>"
   password-label: "Password"
   submit-button: "<green>Sign In</green>"
+  forgot-button-enabled: true
+  forgot-button: "<yellow>Forgot Password?</yellow>"
+  forgot-button-template: "/email recover"
   cancel-button-enabled: true
   cancel-button: "<red>Cancel</red>"
   # Custom action buttons (optional)
   # actions:
   #   - type: submit
   #     label: "<green>Login</green>"
+  #   - type: forgot
+  #     label: "<yellow>Forgot Password?</yellow>"
   #   - type: cancel
   #     label: "<red>Cancel</red>"
   #   - type: command

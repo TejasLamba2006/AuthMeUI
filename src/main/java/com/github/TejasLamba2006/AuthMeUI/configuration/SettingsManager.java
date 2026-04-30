@@ -3,16 +3,23 @@ package com.github.TejasLamba2006.AuthMeUI.configuration;
 import com.github.TejasLamba2006.AuthMeUI.AuthMeUIPlugin;
 import io.papermc.paper.registry.data.dialog.ActionButton;
 import io.papermc.paper.registry.data.dialog.action.DialogAction;
+import me.clip.placeholderapi.PlaceholderAPI;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Player;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 
 public class SettingsManager {
@@ -24,6 +31,7 @@ public class SettingsManager {
     private static final String ACTION_URL_KEY = "url";
     private static final String ACTION_TYPE_SUBMIT = "submit";
     private static final String ACTION_TYPE_CANCEL = "cancel";
+    private static final String ACTION_TYPE_FORGOT = "forgot";
     private static final String ACTION_TYPE_COMMAND = "command";
     private static final String ACTION_TYPE_URL = "url";
     private static final String ACTION_TYPE_OPEN_URL_DASH = "open-url";
@@ -31,14 +39,25 @@ public class SettingsManager {
     private static final String ACTION_LABEL_DEFAULT = "<gray>Button</gray>";
     private static final String ACTION_COMMAND_DEFAULT = "/help";
     private static final String URL_ACTION_WARNING = "Skipping URL action in %s: %s";
+    private static final String ITEMS_ADDER_PLUGIN_NAME = "ItemsAdder";
+    private static final String ITEMS_ADDER_FONT_WRAPPER_CLASS = "dev.lone.itemsadder.api.FontImages.FontImageWrapper";
+    private static final String ITEMS_ADDER_FONT_REPLACE_METHOD = "replaceFontImages";
 
     private final AuthMeUIPlugin plugin;
     private final MiniMessage miniMessage;
+    private final AtomicBoolean placeholderApiErrorLogged;
+    private final AtomicBoolean itemsAdderErrorLogged;
+    private final AtomicBoolean itemsAdderLookupAttempted;
+    private final AtomicReference<Method> itemsAdderReplaceMethod;
     private FileConfiguration config;
 
     public SettingsManager(AuthMeUIPlugin plugin) {
         this.plugin = plugin;
         this.miniMessage = MiniMessage.miniMessage();
+        this.placeholderApiErrorLogged = new AtomicBoolean(false);
+        this.itemsAdderErrorLogged = new AtomicBoolean(false);
+        this.itemsAdderLookupAttempted = new AtomicBoolean(false);
+        this.itemsAdderReplaceMethod = new AtomicReference<>();
         this.config = plugin.getConfig();
     }
 
@@ -105,6 +124,23 @@ public class SettingsManager {
     public Component getLoginCancelButton() {
         String raw = config.getString("login-dialog.cancel-button", "<red>Cancel</red>");
         return miniMessage.deserialize(raw);
+    }
+
+    public boolean isLoginForgotEnabled() {
+        return config.getBoolean("login-dialog.forgot-button-enabled", true);
+    }
+
+    public Component getLoginForgotButton() {
+        String raw = config.getString("login-dialog.forgot-button", "<yellow>Forgot Password?</yellow>");
+        return miniMessage.deserialize(raw);
+    }
+
+    public String getLoginForgotCommandTemplate() {
+        String raw = config.getString("login-dialog.forgot-button-template", "/email recover");
+        if (raw == null || raw.isBlank()) {
+            return "/email recover";
+        }
+        return raw;
     }
 
     public Component getRegisterTitle() {
@@ -191,7 +227,84 @@ public class SettingsManager {
     }
 
     public Component parseText(String raw) {
-        return miniMessage.deserialize(raw != null ? raw : "");
+        return parseText(raw, null);
+    }
+
+    public Component parseText(String raw, Player player) {
+        String resolvedText = raw != null ? raw : "";
+
+        if (!resolvedText.isEmpty()) {
+            resolvedText = applyPlaceholderApi(resolvedText, player);
+            resolvedText = applyItemsAdderFontImages(resolvedText);
+        }
+
+        return miniMessage.deserialize(resolvedText);
+    }
+
+    private String applyPlaceholderApi(String text, Player player) {
+        if (player == null || !plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            return text;
+        }
+
+        try {
+            return PlaceholderAPI.setPlaceholders(player, text);
+        } catch (Exception exception) {
+            if (placeholderApiErrorLogged.compareAndSet(false, true)) {
+                plugin.getLogger().log(Level.WARNING,
+                        "Failed to parse PlaceholderAPI placeholders for dialog text.",
+                        exception);
+            }
+            return text;
+        }
+    }
+
+    private String applyItemsAdderFontImages(String text) {
+        if (!plugin.getServer().getPluginManager().isPluginEnabled(ITEMS_ADDER_PLUGIN_NAME)) {
+            return text;
+        }
+
+        Method replaceMethod = resolveItemsAdderReplaceMethod();
+        if (replaceMethod == null) {
+            return text;
+        }
+
+        try {
+            Object result = replaceMethod.invoke(null, text);
+            if (result instanceof String replacedText) {
+                return replacedText;
+            }
+            return text;
+        } catch (Exception exception) {
+            if (itemsAdderErrorLogged.compareAndSet(false, true)) {
+                plugin.getLogger().log(Level.WARNING,
+                        "Failed to parse ItemsAdder font placeholders for dialog text.",
+                        exception);
+            }
+            return text;
+        }
+    }
+
+    private Method resolveItemsAdderReplaceMethod() {
+        if (itemsAdderLookupAttempted.get()) {
+            return itemsAdderReplaceMethod.get();
+        }
+
+        if (!itemsAdderLookupAttempted.compareAndSet(false, true)) {
+            return itemsAdderReplaceMethod.get();
+        }
+
+        try {
+            Class<?> fontWrapperClass = Class.forName(ITEMS_ADDER_FONT_WRAPPER_CLASS);
+            Method method = fontWrapperClass.getMethod(ITEMS_ADDER_FONT_REPLACE_METHOD, String.class);
+            if (Modifier.isStatic(method.getModifiers())
+                    && Objects.equals(method.getReturnType(), String.class)) {
+                itemsAdderReplaceMethod.set(method);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            itemsAdderReplaceMethod.set(null);
+        }
+
+        return itemsAdderReplaceMethod.get();
     }
 
     public List<ActionButton> buildActionButtons(String configSection, ActionButton primaryAction) {
@@ -216,13 +329,19 @@ public class SettingsManager {
         return buttons;
     }
 
-    public List<ActionButton> buildLoginActionButtons(ActionButton submitAction, ActionButton cancelAction) {
+    public List<ActionButton> buildLoginActionButtons(
+            ActionButton submitAction,
+            ActionButton cancelAction,
+            ActionButton forgotAction) {
+
         List<ActionButton> buttons = new ArrayList<>();
         List<Map<?, ?>> rawActions = config.getMapList(LOGIN_ACTIONS_PATH);
 
         boolean hasSubmitAction = false;
         boolean hasCancelAction = false;
+        boolean hasForgotAction = false;
         boolean cancelEnabled = isLoginCancelEnabled();
+        boolean forgotEnabled = isLoginForgotEnabled();
 
         if (!rawActions.isEmpty()) {
             for (Map<?, ?> actionMap : rawActions) {
@@ -231,14 +350,21 @@ public class SettingsManager {
                         actionMap,
                         submitAction,
                         cancelAction,
-                        cancelEnabled);
+                        forgotAction,
+                        cancelEnabled,
+                        forgotEnabled);
                 hasSubmitAction = hasSubmitAction || result.submitHandled();
                 hasCancelAction = hasCancelAction || result.cancelHandled();
+                hasForgotAction = hasForgotAction || result.forgotHandled();
             }
         }
 
         if (!hasSubmitAction) {
             buttons.addFirst(submitAction);
+        }
+
+        if (forgotEnabled && !hasForgotAction) {
+            buttons.add(forgotAction);
         }
 
         if (cancelEnabled && !hasCancelAction) {
@@ -282,7 +408,9 @@ public class SettingsManager {
             Map<?, ?> actionMap,
             ActionButton submitAction,
             ActionButton cancelAction,
-            boolean cancelEnabled) {
+            ActionButton forgotAction,
+            boolean cancelEnabled,
+            boolean forgotEnabled) {
 
         String type = extractString(actionMap, ACTION_TYPE_KEY, ACTION_TYPE_SUBMIT).toLowerCase(Locale.ROOT);
         Component label = miniMessage.deserialize(extractString(actionMap, ACTION_LABEL_KEY, ACTION_LABEL_DEFAULT));
@@ -299,6 +427,14 @@ public class SettingsManager {
 
                 buttons.add(cancelAction);
                 return LoginActionResult.CANCEL;
+            }
+            case ACTION_TYPE_FORGOT -> {
+                if (!forgotEnabled) {
+                    return LoginActionResult.NONE;
+                }
+
+                buttons.add(forgotAction);
+                return LoginActionResult.FORGOT;
             }
             case ACTION_TYPE_COMMAND -> buttons.add(buildCommandActionButton(label, actionMap));
             case ACTION_TYPE_URL, ACTION_TYPE_OPEN_URL_DASH, ACTION_TYPE_OPEN_URL_UNDERSCORE -> {
@@ -354,16 +490,19 @@ public class SettingsManager {
     }
 
     private enum LoginActionResult {
-        NONE(false, false),
-        SUBMIT(true, false),
-        CANCEL(false, true);
+        NONE(false, false, false),
+        SUBMIT(true, false, false),
+        CANCEL(false, true, false),
+        FORGOT(false, false, true);
 
         private final boolean submitHandled;
         private final boolean cancelHandled;
+        private final boolean forgotHandled;
 
-        LoginActionResult(boolean submitHandled, boolean cancelHandled) {
+        LoginActionResult(boolean submitHandled, boolean cancelHandled, boolean forgotHandled) {
             this.submitHandled = submitHandled;
             this.cancelHandled = cancelHandled;
+            this.forgotHandled = forgotHandled;
         }
 
         public boolean submitHandled() {
@@ -372,6 +511,10 @@ public class SettingsManager {
 
         public boolean cancelHandled() {
             return cancelHandled;
+        }
+
+        public boolean forgotHandled() {
+            return forgotHandled;
         }
     }
 
