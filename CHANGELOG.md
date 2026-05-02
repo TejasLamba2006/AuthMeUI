@@ -4,6 +4,15 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.3.3] - 2026-05-02
+
+### Behavior update
+
+- Removed the automatic dialog reopen loop from the post-join authentication watchdog.
+- The auth dialog now opens once after the initial delay and stays closed until the next auth flow is triggered.
+
+---
+
 ## [1.3.2] - 2026-04-26
 
 ### Hotfix

@@ -19,7 +19,6 @@ public class PlayerSessionListener implements Listener {
     private static final int INITIAL_DELAY_TICKS = 5;
     private static final int CHECK_INTERVAL_TICKS = 5;
     private static final int MAX_WAIT_TICKS = 20;
-    private static final int REOPEN_INTERVAL_TICKS = 100;
     private static final int MIN_DIALOG_CLIENT_PROTOCOL = 769; // Minecraft 1.21.6
 
     private final AuthMeUIPlugin plugin;
@@ -49,7 +48,7 @@ public class PlayerSessionListener implements Listener {
 
     private void scheduleAuthenticationWatchdog(Player player) {
         final int[] elapsedTicks = { 0 };
-        final int[] nextPromptAtTick = { MAX_WAIT_TICKS };
+        final boolean[] dialogShown = { false };
 
         player.getScheduler().runAtFixedRate(plugin, scheduledTask -> {
             if (!player.isOnline()) {
@@ -64,7 +63,7 @@ public class PlayerSessionListener implements Listener {
 
             elapsedTicks[0] += CHECK_INTERVAL_TICKS;
 
-            if (elapsedTicks[0] < nextPromptAtTick[0]) {
+            if (dialogShown[0] || elapsedTicks[0] < MAX_WAIT_TICKS) {
                 return;
             }
 
@@ -73,7 +72,7 @@ public class PlayerSessionListener implements Listener {
                 dialogManager.presentAuthDialog(player, hasAccount);
             }
 
-            nextPromptAtTick[0] = elapsedTicks[0] + REOPEN_INTERVAL_TICKS;
+            dialogShown[0] = true;
         }, null, INITIAL_DELAY_TICKS, CHECK_INTERVAL_TICKS);
     }
 }
