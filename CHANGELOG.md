@@ -4,6 +4,16 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.3.4] - 2026-05-02
+
+### Bugfix
+
+- Fixed `IllegalArgumentException: No variables in macro` error when clicking the forgot password button.
+- Changed forgot password action from `commandTemplate` to `customClick` to properly execute the configured command without requiring macro variables.
+- Added proper handlers for forgot password action in both game and configuration phase connections.
+
+---
+
 ## [1.3.3] - 2026-05-02
 
 ### Behavior update

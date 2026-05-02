@@ -80,6 +80,11 @@ public class DialogInteractionListener implements Listener {
             return;
         }
 
+        if (actionKey.equals(DialogIdentifiers.LOGIN_FORGOT)) {
+            handleLoginForgot(player);
+            return;
+        }
+
         if (responseView == null) {
             return;
         }
@@ -112,6 +117,11 @@ public class DialogInteractionListener implements Listener {
 
         if (actionKey.equals(DialogIdentifiers.LOGIN_CANCEL)) {
             handleConfigPhaseCancel(uniqueId);
+            return;
+        }
+
+        if (actionKey.equals(DialogIdentifiers.LOGIN_FORGOT)) {
+            handleConfigPhaseForgot(audience);
             return;
         }
 
@@ -419,6 +429,17 @@ public class DialogInteractionListener implements Listener {
     private void handleSupportAction(Player player) {
         boolean hasAccount = authBridge.isPlayerRegistered(player.getName());
         dialogManager.presentAuthDialog(player, hasAccount);
+    }
+
+    private void handleLoginForgot(Player player) {
+        String commandTemplate = settings.getLoginForgotCommandTemplate();
+        plugin.getServer().dispatchCommand(player, commandTemplate);
+    }
+
+    private void handleConfigPhaseForgot(Audience audience) {
+        Component message = settings.getMessage("forgot.info",
+                "<yellow>Please use the /email recover command to reset your password.</yellow>");
+        audience.sendMessage(message);
     }
 
     private void displayLoginWithError(Player player, String messageKey, String defaultMessage) {

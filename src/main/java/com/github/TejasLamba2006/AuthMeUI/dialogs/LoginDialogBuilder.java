@@ -85,8 +85,8 @@ public class LoginDialogBuilder {
                 .build();
 
         ActionButton forgotButton = ActionButton.builder(settings.getLoginForgotButton())
-            .action(DialogAction.commandTemplate(settings.getLoginForgotCommandTemplate()))
-            .build();
+                .action(DialogAction.customClick(DialogIdentifiers.LOGIN_FORGOT, null))
+                .build();
 
         ActionButton cancelButton = ActionButton.builder(settings.getLoginCancelButton())
                 .action(DialogAction.customClick(DialogIdentifiers.LOGIN_CANCEL, null))
