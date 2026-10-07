@@ -6,7 +6,7 @@
 
     <groupId>com.github.TejasLamba2006</groupId>
     <artifactId>AuthMeUI</artifactId>
-    <version>1.3.4</version>
+    <version>1.4.0</version>
     <packaging>jar</packaging>
 
     <name>AuthMeUI</name>
@@ -40,22 +40,29 @@
             <id>placeholderapi</id>
             <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
         </repository>
+        <!-- JitPack: reserved for builds needing AuthMe 6.0.x source (not used;
+             6.0.x is not maven-published). Kept off by default. -->
     </repositories>
 
     <dependencies>
-        <!-- Paper API with Dialog Support (1.21.7 experimental builds) -->
+        <!-- Paper API with Dialog Support. Bumped to 1.21.11 so adventure-api
+             4.26.1 (ObjectContents.sprite/playerHead for feature I inline
+             icons) is on the compile classpath. Source-compatible across
+             1.21.7-1.21.11 per the Dialog API compat memory. -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.21.7-R0.1-SNAPSHOT</version>
+            <version>1.21.11-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
 
-        <!-- AuthMe API -->
+        <!-- AuthMe API (codemc publishes up to 5.7.x; 6.0.x is not on maven,
+             but the v3 AuthMeApi surface we use is stable across both.
+             Runtime detection guards against 6.0's built-in dialog.) -->
         <dependency>
             <groupId>fr.xephi</groupId>
             <artifactId>authme</artifactId>
-            <version>5.6.0-SNAPSHOT</version>
+            <version>5.7.0</version>
             <scope>provided</scope>
         </dependency>
 
@@ -73,6 +80,14 @@
             <artifactId>bstats-bukkit</artifactId>
             <version>3.1.0</version>
             <scope>compile</scope>
+        </dependency>
+
+        <!-- JUnit (test only) -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -130,6 +145,11 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

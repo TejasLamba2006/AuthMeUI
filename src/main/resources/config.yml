@@ -29,6 +29,12 @@ dialogs:
   configuration-phase-fastlogin-compatibility: true
   # Delay in ticks before post-join auth dialog fallback when compatibility mode defers pre-join checks.
   configuration-phase-deferred-login-check-delay-ticks: 40
+  # Layout mode for link (url/copy) buttons.
+  # grouped  = link buttons share the main action grid (default; only mode
+  #            fully supported by Paper's multiAction dialog type)
+  # separated = accepted alias; currently renders as grouped. A truly
+  #            separated layout would require a second dialog.
+  link-button-layout: grouped
 
 # Login dialog configuration
 login-dialog:
@@ -57,6 +63,170 @@ login-dialog:
   #   - type: url
   #     label: "<aqua>Website</aqua>"
   #     template: "https://example.com/help"
+  #   - type: copy
+  #     label: "<aqua>Copy Discord</aqua>"
+  #     template: "discord.gg/example"
+
+# Per-button sounds played on click.
+# Format: "namespace:path volume pitch" — volume and pitch are optional (default 1.0).
+# Leave a key unset (or blank) for no sound on that action.
+dialog-sounds:
+  login_submit: "minecraft:ui.button.click 1 1"
+  login_cancel: "minecraft:entity.villager.no 1 1"
+  login_forgot: ""
+  register_submit: "minecraft:ui.button.click 1 1"
+  rules_confirm: "minecraft:entity.player.levelup 1 1.2"
+  support: ""
+  totp_submit: "minecraft:ui.button.click 1 1"
+  totp_cancel: "minecraft:entity.villager.no 1 1"
+  forgot_submit: "minecraft:ui.button.click 1 1"
+  forgot_back: "minecraft:entity.villager.no 1 1"
+  forgot_verify: "minecraft:ui.button.click 1 1"
+  forgot_resend: "minecraft:entity.villager.no 1 1"
+  recover_submit: "minecraft:entity.player.levelup 1 1.2"
+  pin_button: "minecraft:ui.button.click 1 1"
+  pin_delete: "minecraft:entity.villager.no 1 1"
+  pin_confirm: "minecraft:ui.button.click 1 1"
+  slider_step: "minecraft:ui.button.click 1 1"
+  slider_confirm: "minecraft:ui.button.click 1 1"
+
+# IP-based anti-brute-force: bans an IP after repeated failed logins, with
+# escalating ban durations. The ban persists in the server's ban list; the
+# in-memory failure counter resets on restart (intentional for a rate limiter).
+ip-guard:
+  enabled: true
+  # Failed attempts before the IP is banned (counter resets after each ban).
+  max-failures: 5
+  # Escalating ban durations in seconds (5m, 30m, 1h, 1d by default).
+  # After the last entry, subsequent bans reuse the longest duration.
+  durations: [300, 1800, 3600, 86400]
+
+# Captcha verification gate shown before the login dialog for untrusted
+# players. Once a player solves a captcha, they are "trusted" for the
+# configured duration and skip the captcha on subsequent dialog re-opens
+# within that window (re-open happens when an incorrect password is entered).
+captcha:
+  enabled: false
+  # Length of generated codes (clamped to 4-10).
+  code-length: 5
+  # Trust window in seconds: a solved captcha exempts the player from
+  # re-solving for this long. 0 = trust only for the immediate next attempt.
+  trust-duration-seconds: 600
+  # Require captcha only after this many failed login attempts by the player
+  # in the current session. 0 = always show captcha to untrusted players.
+  failures-before-trigger: 0
+  title: "<white><bold>Are you human?</bold></white>"
+  body:
+    - "<gray>Please type the code below to continue:</gray>"
+    - "<dark_gray><bold>%code%</bold></dark_gray>"
+  input-label: "Captcha code"
+  submit-button: "<green>Verify</green>"
+
+# TOTP two-factor authentication dialog. Shown after a correct password when
+# the player has 2FA enabled in AuthMe. Requires AuthMe's TOTP reflection
+# hooks (AuthenticationBridge.hasTotpEnabled / checkTotpCode).
+totp-2fa:
+  enabled: false
+  # Kick after this many wrong 2FA codes (per session). 0 disables the limit.
+  max-tries: 5
+  # Set false to never kick (player can retry indefinitely).
+  attempts-enabled: true
+  title: "<gold>Two-Factor Authentication</gold>"
+  body:
+    - "<gray>Enter your 6-digit authenticator code:</gray>"
+  input-label: "Authenticator code"
+  submit-button: "<green>Verify</green>"
+  cancel-button: "<red>Cancel</red>"
+
+# Authentication input mode. "password" (default) uses a text field.
+# "pin" shows a 10-key numeric pad; "slider" shows up/down steppers per digit.
+# PIN/Slider modes only apply to the LOGIN dialog (registration always uses
+# a password text field, since AuthMe stores a password hash regardless of
+# how the player enters it). The entered PIN/slider code IS the password —
+# it is checked via AuthMe.checkPassword, same as text-mode login.
+auth-mode:
+  # password | pin | slider
+  type: password
+  pin:
+    length: 4
+    title: "<gold>Enter your PIN</gold>"
+    body:
+      - "<gray>Tap the digits to enter your PIN.</gray>"
+    confirm-button: "<green>Confirm</green>"
+    delete-button: "<red>⌫ Delete</red>"
+    button-width: 100
+    logout-button: "<red>Cancel</red>"
+  slider:
+    length: 4
+    title: "<gold>Enter your code</gold>"
+    body:
+      - "<gray>Use ▲/▼ to set each digit.</gray>"
+    confirm-button: "<green>Confirm</green>"
+    button-width: 100
+    logout-button: "<red>Cancel</red>"
+
+# Forgot-password email recovery flow. When enabled, the login dialog's
+# "Forgot Password?" button opens a 3-stage dialog flow instead of running
+# the legacy forgot-button-template command:
+#   1. Email entry — player types their stored email; validated against AuthMe.
+#   2. Email verify — AuthMe emails a numeric code; player types it back.
+#      Resend is cooldown-gated; wrong codes trip the IP guard and kick on max-tries.
+#   3. Recover — player sets a new password (new + confirm); applied via AuthMe.
+# Requires AuthMe's email reflection hooks (AuthenticationBridge.sendVerificationEmail /
+# getStoredEmail / changePassword). When disabled, the login forgot-button falls
+# back to forgot-button-template (default "/email recover").
+forgot-password:
+  enabled: false
+  # Email-entry dialog
+  email-title: "<gold>Forgot Password</gold>"
+  email-body:
+    - "<gray>Enter the email linked to your account.</gray>"
+  email-label: "Email"
+  email-submit-button: "<green>Send Code</green>"
+  back-button: "<red>Back</red>"
+  # Shown when no email is stored for the account.
+  no-email-title: "<gold>No Email Linked</gold>"
+  no-email-body:
+    - "<red>No email is linked to this account. Please contact an admin.</red>"
+  # Verification code (clamped 4-8 digits).
+  code-length: 6
+  # Seconds before the resend button is usable again (clamped 10-600).
+  resend-cooldown: 60
+  # Wrong code attempts before the player is kicked (clamped >=1).
+  max-tries: 5
+  # Email-verify dialog. {email} = the stored email (escaped); {cooldown} = resend seconds remaining.
+  verify-title: "<gold>Verify Your Email</gold>"
+  verify-body:
+    - "<gray>A code was sent to {email}. Enter it below.</gray>"
+  code-label: "Code"
+  verify-button: "<green>Verify</green>"
+  resend-button: "<yellow>Resend code</yellow>"
+  resend-cooldown-label: "<gray>Resend ({cooldown}s)</gray>"
+  # Recover (set new password) dialog
+  recover-title: "<gold>Reset Password</gold>"
+  recover-body:
+    - "<gray>Enter a new password for your account.</gray>"
+  recover-new-label: "New password"
+  recover-confirm-label: "Confirm password"
+  recover-submit-button: "<green>Set Password</green>"
+
+# Premium password-set dialog (feature K)
+# Shown once per session to premium-auto-login players (FastLogin / Mojang)
+# so they can set a real AuthMe password. Without it, a later premium-service
+# outage would lock them out. Disabled by default; enable when FastLogin is in use.
+premium-set:
+  enabled: false
+  title: "<white><bold>Set Your Password</bold></white>"
+  body:
+    - "<gray>You signed in via a premium account. Set a password so you can log in directly if that ever changes.</gray>"
+  new-label: "New password"
+  confirm-label: "Confirm password"
+  submit-button: "<green>Save Password</green>"
+
+# Admin-forced reset dialog title override (feature L)
+# The body, labels, and submit button reuse the forgot-password.recover-* fields.
+recover-dialog:
+  title: "<white><bold>Reset Your Password</bold></white>"
 
 # Registration dialog configuration
 register-dialog:
@@ -120,6 +290,26 @@ messages:
   rules:
     must-accept: "<red>You must accept the rules to continue!</red>"
 
+  # Captcha messages
+  captcha:
+    incorrect: "<red>Incorrect code. Please try again.</red>"
+
+  # TOTP 2FA messages
+  totp:
+    incorrect: "<red>Invalid authenticator code. Please try again.</red>"
+    too-many-attempts: "<red>Too many incorrect 2FA attempts. Please reconnect.</red>"
+    cancelled: "<yellow>Two-factor authentication cancelled.</yellow>"
+
+  # Forgot-password / email recovery messages
+  forgot:
+    invalid-email: "<red>Incorrect email.</red>"
+    wrong-code: "<red>Incorrect code.</red>"
+    too-many-attempts: "<red>Too many incorrect code attempts. Please reconnect.</red>"
+    send-failed: "<red>Could not send the email. Please contact an admin.</red>"
+    recover-success: "<green>Password updated successfully.</green>"
+    recover-mismatch: "<red>Passwords do not match. Try again.</red>"
+    info: "<yellow>Please use the /email recover command to reset your password.</yellow>"
+
   # Command messages
   commands:
     no-permission: "<red>You don't have permission to do that!</red>"
@@ -129,6 +319,196 @@ messages:
     usage: "<yellow>Usage: /%command% show <login|register> | reload</yellow>"
     dialog-opened: "<gray>Dialog opened.</gray>"
     invalid-dialog: "<yellow>Invalid dialog type. Use: login or register</yellow>"
+
+# Custom inline icons (feature I). Use <icons:name> anywhere a MiniMessage
+# text field is parsed (titles, body lines, button labels, status messages)
+# to insert a sprite or player-head icon inline at that position.
+#
+# Three types:
+#   sprite       - a vanilla atlas sprite (e.g. item/trial_key).
+#                  atlas:  the sprite atlas (default "items").
+#                  sprite: the sprite path under that atlas.
+#   player_head  - a player-head skin. player: a name or "{player}" to use
+#                  the viewing player's own head.
+#   item         - a Bukkit ItemStack. NOTE: item icons do NOT inline via
+#                  <icons:name>; they are rendered as a separate dialog body
+#                  (used by custom screens in feature J). sprite/player_head
+#                  are the inline-capable types.
+#
+# Anything invalid or missing here — an unknown name, bad sprite/material,
+# etc. — is silently treated as "no icon", so a bad tag or a bad entry
+# never breaks the surrounding text or the dialog itself.
+custom_icons:
+  trial_key:
+    type: sprite
+    atlas: items
+    sprite: item/trial_key
+  # bedrock:
+  #   type: sprite
+  #   atlas: items
+  #   sprite: item/bedrock
+  # my_head:
+  #   type: player_head
+  #   player: "{player}"
+  # red_bed:
+  #   type: item
+  #   material: RED_BED
+  #   show_decorations: false
+  #   show_tooltip: false
+  #   width: 16
+  #   height: 16
+
+# Custom data-driven dialog screens (feature J). Each screen is a standalone
+# dialog that can be shown on a trigger (postjoin/prejoin/command) or via
+# /authmeui screen <id>. Screens hold RAW text strings parsed at render time
+# so {player} and <icons:name> resolve to the actual viewer.
+#
+# Per screen:
+#   id            - unique identifier (used by /authmeui screen <id>)
+#   enabled       - if false, the screen is skipped
+#   title         - dialog title, MiniMessage supported
+#   content       - list of body lines, MiniMessage supported
+#   allow_close   - whether the player can close with ESC
+#   button_width  - default width for this screen's buttons (pixels)
+#   trigger       - when to show: command | postjoin | prejoin
+#                     command  - only via /authmeui screen <id>
+#                     postjoin - after successful auth (in-game)
+#                     prejoin  - during the configuration phase (pre-join)
+#   sound_on_show - sound played when the screen opens (namespace:sound [vol] [pitch])
+#   icon          - optional custom_icons name to display (ITEM types render
+#                   as a leading body item; sprite/player-head types prepend
+#                   inline to the title)
+#   checkbox_label - if set, shows a "don't show again" checkbox
+#   checkbox_action - what the checkbox does: close (dismiss forever) or show
+#
+# Per button (under `buttons:`):
+#   label  - button text, MiniMessage supported
+#   action - close | open_url | copy | command | console
+#              close    - closes the dialog (default)
+#              open_url - opens the URL in `value` client-side (no round-trip)
+#              copy     - copies `value` to the player's clipboard (no round-trip)
+#              command  - runs `value` as the player (in-game only; skipped pre-join)
+#              console  - runs `value` as the console (in-game and pre-join)
+#   value  - the URL/command/clipboard text (required for open_url/copy/command/console)
+#   width  - override this button's width (pixels); defaults to button_width
+#   sound  - per-button sound played on click (namespace:sound [vol] [pitch])
+custom_screens:
+  - id: example
+    enabled: false
+    title: "<gold>Server Notice</gold>"
+    content:
+      - "<gray>Welcome to the server, <yellow>{player}</yellow>!</gray>"
+      - "<gray>Have fun playing.</gray>"
+    allow_close: true
+    button_width: 200
+    trigger: postjoin
+    sound_on_show: ""
+    icon: ""
+    checkbox_label: "<gray>Don't show this again</gray>"
+    checkbox_action: close
+    buttons:
+      - label: "<green>OK</green>"
+        action: close
+        sound: "minecraft:ui.button.click"
+      - label: "<#5865F2>Discord</#5865F2>"
+        action: open_url
+        value: "https://discord.gg/abc"
+        width: 200
+
+  # Example: command-trigger screen (only shown via /authmeui screen rules)
+  # - id: rules
+  #   enabled: false
+  #   title: "<gradient:gold:yellow>Server Rules</gradient>"
+  #   content:
+  #     - "<gray>Hello, <white>{player}</white>!</gray>"
+  #     - "<gray>Please read the rules.</gray>"
+  #   allow_close: true
+  #   trigger: command
+  #   sound_on_show: "minecraft:entity.player.levelup 0.5 1.2"
+  #   buttons:
+  #     - label: "<green>Understood</green>"
+  #       action: close
+  #       sound: "minecraft:ui.button.click"
+  #     - label: "<aqua>Full Rules</aqua>"
+  #       action: command
+  #       value: "/rules"
+
+# Button-column count for custom-screen dialogs (feature J).
+custom_screens_columns: 2
+
+# Discord webhook notifications (feature N). Sends coloured embed cards
+# to a Discord channel on auth events. Uses Java's built-in HttpClient —
+# no extra dependencies. Fire-and-forget (failures are logged, not fatal).
+discord:
+  enabled: false
+  webhook-url: ""
+  events:
+    login: true
+    register: true
+    logout: false
+    admin-reset: true
+  colors:
+    login: "#57F287"
+    register: "#3498DB"
+    logout: "#95A5A6"
+    admin-reset: "#ED4245"
+
+# Bedrock / Floodgate (Geyser) overrides (feature O). Lets bedrock players
+# auto-login without a dialog and widens their dialogs (bedrock clients need
+# more input/button width). Floodgate is detected reflectively at runtime —
+# no compile-time dependency. Requires the Floodgate plugin to be installed.
+bedrock:
+  # Auto-login bedrock players. When true, registered Floodgate players are
+  # force-logged-in on join (no password dialog). AuthMe itself handles
+  # bedrock registration when Floodgate is installed, so unregistered bedrock
+  # players still see the register dialog.
+  auto-login: false
+  # Auto-login mode (only used when auto-login is true):
+  #   link   - resolve the linked Java account UUID via Floodgate linking.
+  #            Requires Geyser account-linking to be configured.
+  #   geyser - trust the bedrock UUID verbatim. WARNING: unsafe unless Geyser
+  #            auth-type=online (real Xbox Live) — in offline mode anyone can
+  #            log in as any bedrock identity with no password.
+  auto-login-mode: link
+  dialog-override:
+    # Apply wider button columns + input width for bedrock players.
+    enabled: false
+    button-columns: 2
+    input-width: 300
+
+# Toast notifications (feature M). Advancement-based popups that fire once
+# per player on a trigger. Each toast is an advancement registered at runtime;
+# the toast appears once, then its criteria are revoked so it can fire again.
+#
+# Triggers (check):
+#   first_register     - fires when this player first registers an AuthMe account.
+#   first_login        - fires when this player first logs in via AuthMe.
+#   first_message      - fires on the player's first chat message of a session.
+#   first_advancement  - fires when the player completes their first advancement
+#                        of a session (vanilla or custom).
+#
+# Note: changing title/icon/content of an already-registered toast requires a
+# full server restart — advancement registry entries are immutable once loaded.
+notifications:
+  toasts:
+    # Example welcome toast shown the first time a player registers.
+    - name: "welcome_toast"
+      check: "first_register"
+      title: "<gold>Welcome!</gold>"
+      content: "<gray>You registered an account. Enjoy your stay, {player}!</gray>"
+      icon: "minecraft:player_head"
+      sound: "minecraft:entity.player.levelup 0.6 1.0"
+      delay: 5
+      frame: "task"
+    # Example login toast shown the first time a player logs in.
+    # - name: "login_toast"
+    #   check: "first_login"
+    #   title: "<aqua>Welcome back!</aqua>"
+    #   content: "<gray>Logged in successfully.</gray>"
+    #   icon: "minecraft:cookie"
+    #   sound: "minecraft:entity.experience_orb.pickup 0.8 1.0"
+    #   delay: 3
+    #   frame: "goal"
 
 # Analytics settings (bStats)
 metrics:

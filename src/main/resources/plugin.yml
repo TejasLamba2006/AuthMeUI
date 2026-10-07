@@ -17,7 +17,7 @@ softdepend:
 commands:
   authmeui:
     description: AuthMeUI administration and dialog commands
-    usage: /<command> <show login|register> | <reload>
+    usage: /<command> <show login|register> | <screen id|reset player> | <reset player> | <reload>
     aliases: [amui, authui]
     permission: authmeui.command
 
@@ -26,7 +26,7 @@ permissions:
     description: Allows access to AuthMeUI commands
     default: true
   authmeui.admin:
-    description: Allows reloading configuration
+    description: Allows reloading configuration and forcing password resets
     default: op
   authmeui.bypass:
     description: Bypass authentication dialogs

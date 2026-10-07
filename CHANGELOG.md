@@ -4,6 +4,35 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.4.0] - 2026-10-08
+
+### New features
+
+- **Captcha** before login, with optional trust period so returning players are not asked every time.
+- **PIN pad and slider login** as alternatives to typing a password (`auth-mode.type: pin | slider`).
+- **Forgot password by email**: players enter their email, get a code, and set a new password in-game.
+- **Two-factor authentication** dialog for players with 2FA enabled in AuthMe.
+- **Admin password reset**: `/authmeui reset <player>` makes a player choose a new password on next login.
+- **Premium players** can be prompted to set a password.
+- **Custom screens**: build your own dialogs (welcome, rules, news) in config, shown before or after join.
+- **Toast notifications** on events like first registration.
+- **Discord webhook** notifications for logins, registrations, logouts, and admin resets.
+- **IP guard** with escalating temporary bans after repeated failed logins.
+- **Bedrock auto-login** through Floodgate.
+- Startup warning when AuthMe 6's own dialog would overlap with AuthMeUI.
+
+### Compatibility
+
+- Minecraft 26.2 and 26.3 (Paper and Folia).
+- Works with AuthMe Reloaded 6.x and AuthMeReReloaded. Email, 2FA, and premium features now load on both.
+- Folia: email, password changes, webhooks, and console commands no longer use the old scheduler.
+
+### Fixes
+
+- PIN and slider modes could not be enabled from the default config. The setting is now `auth-mode.type`; old `auth-mode: pin` configs still work.
+
+---
+
 ## [1.3.4] - 2026-05-02
 
 ### Bugfix

@@ -139,9 +139,47 @@ public class ConfigurationPhaseListener implements Listener {
 
         Audience audience = connection.getAudience();
 
+        // ponytail: K+L — an admin-forced reset flag takes priority over the
+        // normal login/register/captcha flow, even in config phase. The
+        // RECOVER_SUBMIT handler clears the flag + completes auth on success.
+        com.github.TejasLamba2006.AuthMeUI.dialogs.RecoverStore recoverStore =
+                dialogManager.getRecoverStore();
+        if (isRegistered && recoverStore != null && recoverStore.isFlagged(uniqueId)) {
+            dialogManager.markRecoverMode(uniqueId,
+                    DialogManager.RecoverMode.ADMIN_RESET);
+            audience.showDialog(dialogManager.createRecoverDialogForAudience(false));
+            // Wait for the recover submit to complete authentication.
+            boolean authenticated = authFuture.join();
+            pendingAuthentications.remove(uniqueId);
+            playerRegistrationStatus.remove(uniqueId);
+            if (!authenticated) {
+                connection.disconnect(settings.getMessage("login.cancelled",
+                        "<yellow>Authentication cancelled.</yellow>"));
+            } else {
+                showPrejoinScreens(connection, audience, uniqueId, playerName);
+            }
+            return;
+        }
+
         // Show the appropriate dialog
         if (isRegistered) {
-            audience.showDialog(dialogManager.createLoginDialogForAudience(playerName));
+            // ponytail: captcha gate for trigger==0 (always-show) on
+            // config-phase login. trigger>0 is handled in the listener's
+            // login-failure branch. DialogManager owns the same gate for
+            // the in-game path, but config-phase presentation happens here
+            // directly, so we mirror the check.
+            com.github.TejasLamba2006.AuthMeUI.authentication.Captcha captcha = dialogManager.getCaptcha();
+            if (settings.isCaptchaEnabled()
+                    && settings.getCaptchaFailuresBeforeTrigger() == 0
+                    && captcha != null
+                    && !captcha.isTrusted(uniqueId)) {
+                String code = captcha.generateFor(uniqueId, settings.getCaptchaCodeLength());
+                audience.showDialog(dialogManager.createCaptchaDialogForAudience(code, null));
+            } else {
+                // ponytail: delegate to DialogManager so PIN/slider modes are
+                // gated consistently with the in-game path.
+                dialogManager.presentLoginDialogForAudience(audience, playerName);
+            }
         } else {
             if (settings.isRulesDialogEnabled()) {
                 audience.showDialog(dialogManager.createRulesDialogForAudience(playerName));
@@ -162,6 +200,51 @@ public class ConfigurationPhaseListener implements Listener {
                     ? settings.getMessage("login.cancelled", "<yellow>Authentication cancelled.</yellow>")
                     : Component.text("Authentication timed out or failed. Please reconnect and try again.");
             connection.disconnect(disconnectMessage);
+            return;
+        }
+
+        // ponytail: feature J — show PREJOIN-trigger custom screens after
+        // successful config-phase auth, before the player enters the game.
+        // Mirrors AuthMeBia's showPrejoinScreensBlocking: iterate in config
+        // order, skip disabled/dismissed, show the first match.
+        showPrejoinScreens(connection, audience, uniqueId, playerName);
+    }
+
+    /**
+     * Show the first enabled, non-dismissed, PREJOIN-trigger custom screen
+     * to a config-phase audience (feature J).
+     */
+    private void showPrejoinScreens(
+            PlayerConfigurationConnection connection,
+            Audience audience,
+            UUID uniqueId,
+            String playerName) {
+        java.util.List<com.github.TejasLamba2006.AuthMeUI.dialogs.CustomScreen> screens =
+                settings.getCustomScreens();
+        for (int i = 0; i < screens.size(); i++) {
+            com.github.TejasLamba2006.AuthMeUI.dialogs.CustomScreen screen = screens.get(i);
+            if (!screen.enabled()) continue;
+            if (screen.trigger() != com.github.TejasLamba2006.AuthMeUI.dialogs.CustomScreen.Trigger.PREJOIN) {
+                continue;
+            }
+            com.github.TejasLamba2006.AuthMeUI.dialogs.ScreenDismissStore store =
+                    dialogManager.getScreenDismissStore();
+            if (store != null
+                    && screen.checkboxAction() == com.github.TejasLamba2006.AuthMeUI.dialogs.CustomScreen.CheckboxAction.CLOSE
+                    && store.isDismissed(uniqueId, screen.id())) {
+                continue;
+            }
+            // ponytail: play the on-show sound via the audience (config phase
+            // has no Player yet). Audience.playSound is supported on the
+            // connection audience.
+            if (screen.soundOnShow() != null && !screen.soundOnShow().isBlank()) {
+                net.kyori.adventure.sound.Sound sound = settings.parseSound(screen.soundOnShow(), "screen_show");
+                if (sound != null) {
+                    audience.playSound(sound);
+                }
+            }
+            audience.showDialog(dialogManager.createCustomScreenDialogForAudience(screen, i));
+            return; // only the first matching screen, in config order
         }
     }
 
@@ -219,7 +302,10 @@ public class ConfigurationPhaseListener implements Listener {
                 }
 
                 if (!authBridge.isPlayerAuthenticated(player)) {
-                    player.showDialog(dialogManager.createLoginDialog(player));
+                    // ponytail: use presentAuthDialog so PIN/slider modes are
+                    // gated consistently for deferred post-join checks.
+                    boolean isRegistered = authBridge.isPlayerRegistered(player.getName());
+                    dialogManager.presentAuthDialog(player, isRegistered);
                 }
             }, null, delayTicks);
         }
@@ -271,5 +357,13 @@ public class ConfigurationPhaseListener implements Listener {
      */
     public Map<UUID, CompletableFuture<Boolean>> getPendingAuthentications() {
         return pendingAuthentications;
+    }
+
+    /**
+     * Get the connection IP map (for IpGuard hooks in the dialog interaction
+     * listener, which needs the player's pre-login IP to track failed logins).
+     */
+    public Map<UUID, String> getConnectionIps() {
+        return connectionIps;
     }
 }

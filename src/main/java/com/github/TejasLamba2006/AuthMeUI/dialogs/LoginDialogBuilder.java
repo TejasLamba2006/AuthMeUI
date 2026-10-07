@@ -39,7 +39,7 @@ public class LoginDialogBuilder {
             contentSections.add(DialogBody.plainMessage(errorNotice));
         }
 
-        TextDialogInput passwordField = createPasswordInput();
+        TextDialogInput passwordField = createPasswordInput(player);
         List<ActionButton> actionButtons = buildActionButtons();
 
         DialogBase dialogBase = DialogBase.builder(settings.getLoginTitle())
@@ -52,7 +52,7 @@ public class LoginDialogBuilder {
         return Dialog.create(builder -> {
             ((Builder) builder.empty())
                     .base(dialogBase)
-                    .type(DialogType.multiAction(actionButtons, null, settings.getButtonColumns()));
+                    .type(DialogType.multiAction(actionButtons, null, settings.getButtonColumns(player)));
         });
     }
 
@@ -70,9 +70,9 @@ public class LoginDialogBuilder {
         return content;
     }
 
-    private TextDialogInput createPasswordInput() {
+    private TextDialogInput createPasswordInput(Player player) {
         return DialogInput.text(PASSWORD_INPUT_KEY, settings.getLoginPasswordLabel())
-                .width(settings.getInputWidth())
+                .width(settings.getInputWidth(player))
                 .labelVisible(true)
                 .maxLength(MAX_PASSWORD_INPUT_LENGTH)
                 .initial("")

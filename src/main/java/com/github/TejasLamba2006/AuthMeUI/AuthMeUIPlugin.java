@@ -2,6 +2,7 @@ package com.github.TejasLamba2006.AuthMeUI;
 
 import com.github.TejasLamba2006.AuthMeUI.authentication.AuthenticationBridge;
 import com.github.TejasLamba2006.AuthMeUI.commands.AuthMeUICommand;
+import com.github.TejasLamba2006.AuthMeUI.conflict.DialogConflictGuard;
 import com.github.TejasLamba2006.AuthMeUI.configuration.SettingsManager;
 import com.github.TejasLamba2006.AuthMeUI.dialogs.DialogManager;
 import com.github.TejasLamba2006.AuthMeUI.listeners.AuthenticationStateListener;
@@ -35,6 +36,13 @@ public final class AuthMeUIPlugin extends JavaPlugin {
         registerCommands();
         initializeAnalytics();
 
+        // Warn if AuthMe 6.0+ has its own dialog UI enabled in the same mode as us.
+        new DialogConflictGuard(this).check(settingsManager.useConfigurationPhase());
+
+        // ponytail: O — warn if bedrock auto-login is set to GEYSER mode,
+        // which trusts any bedrock connection with no linking verification.
+        warnIfBedrockGeyserModeUnsafe();
+
         logStartupBanner();
     }
 
@@ -65,6 +73,38 @@ public final class AuthMeUIPlugin extends JavaPlugin {
         DialogInteractionListener dialogInteractionListener = new DialogInteractionListener(
                 this, authBridge, dialogManager, settingsManager);
 
+        // Bind the captcha trust window so DialogManager can gate login dialogs.
+        dialogManager.bindCaptcha(dialogInteractionListener.getCaptcha());
+
+        // ponytail: bind the custom-screen dismiss store (feature J) so both
+        // the dialog facade (showCustomScreen) and the listener's click
+        // handler share the same in-memory + flat-file persistence.
+        dialogManager.bindScreenDismissStore(
+                new com.github.TejasLamba2006.AuthMeUI.dialogs.ScreenDismissStore(this));
+
+        // ponytail: K+L — bind the admin-forced-reset flag store so both
+        // the facade (presentAuthDialog recover branch) and the listener's
+        // RECOVER_SUBMIT handler share one instance.
+        dialogManager.bindRecoverStore(
+                new com.github.TejasLamba2006.AuthMeUI.dialogs.RecoverStore(this));
+
+        // ponytail: N — bind the shared Discord webhook sender so auth-event
+        // listeners + the admin-reset command can fire embeds off a single
+        // async-safe HttpClient (no okhttp/gson dep; java.net.http only).
+        dialogManager.bindDiscordWebhook(
+                new com.github.TejasLamba2006.AuthMeUI.webhook.DiscordWebhook(this));
+
+        // ponytail: M — bind the toast store (flat-file "shown" persistence)
+        // and register the toast listener. Toasts fire on AuthMe register/
+        // login events (first_register/first_login) and via advancement/
+        // message triggers, so the listener is registered in both modes.
+        com.github.TejasLamba2006.AuthMeUI.notifications.ToastStore toastStore =
+                new com.github.TejasLamba2006.AuthMeUI.notifications.ToastStore(this);
+        pluginManager.registerEvents(
+                new com.github.TejasLamba2006.AuthMeUI.notifications.ToastListener(
+                        this, authBridge, settingsManager, toastStore),
+                this);
+
         // Create and register configuration phase listener if enabled
         if (settingsManager.useConfigurationPhase()) {
             configurationPhaseListener = new ConfigurationPhaseListener(
@@ -79,7 +119,7 @@ public final class AuthMeUIPlugin extends JavaPlugin {
         } else {
             // Register the player session listener for post-join authentication
             pluginManager.registerEvents(
-                    new PlayerSessionListener(this, authBridge, dialogManager),
+                    new PlayerSessionListener(this, authBridge, dialogManager, settingsManager),
                     this);
         }
 
@@ -121,6 +161,25 @@ public final class AuthMeUIPlugin extends JavaPlugin {
     public void reloadPluginConfig() {
         reloadConfig();
         settingsManager.reload();
+        // Re-check conflict after reload — admin may have flipped modes.
+        new DialogConflictGuard(this).check(settingsManager.useConfigurationPhase());
+    }
+
+    /**
+     * Ponytail: O — ported from AuthMeBia's warnIfBedrockGeyserModeUnsafe.
+     * GEYSER auto-login mode trusts any bedrock connection with no account
+     * linking; only safe when Geyser itself runs auth-type=online.
+     */
+    private void warnIfBedrockGeyserModeUnsafe() {
+        if (!settingsManager.isBedrockAutoLoginEnabled()) return;
+        if (settingsManager.getBedrockAutoLoginMode()
+                != SettingsManager.BedrockAutoLoginMode.GEYSER) return;
+
+        getLogger().warning("bedrock.auto-login-mode is set to 'geyser'. This trusts ANY Bedrock/Geyser "
+                + "connection with NO account-linking verification -- it is only safe if Geyser's own "
+                + "auth-type is set to 'online' (real Xbox Live sign-in) in Geyser's config.yml. If Geyser "
+                + "is running in offline mode, this setting lets anyone auto-login as any Bedrock identity "
+                + "with no password. See the bedrock.auto-login-mode comment in config.yml for details.");
     }
 
     public static AuthMeUIPlugin getInstance() {

@@ -42,7 +42,7 @@ public class RulesDialogBuilder {
                     .type(DialogType.multiAction(
                             List.of(confirmButton),
                             null,
-                            settings.getButtonColumns()));
+                            settings.getButtonColumns(player)));
         });
     }
 

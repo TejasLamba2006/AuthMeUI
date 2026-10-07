@@ -5,9 +5,12 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.regex.Pattern;
@@ -23,6 +26,28 @@ public class AuthenticationBridge {
     private final Plugin plugin;
     private final AuthMeApi authMeApi;
 
+    // ponytail: reflection handles into AuthMe internals (DataSource, PlayerCache,
+    // EmailService, TotpAuthenticator). Mirrors AuthMeBia's AuthMe.initReflection()
+    // exactly — these classes aren't on the public AuthMeApi surface, so reflection
+    // is the only source-compatible path across 5.7/6.0. All null-gated; a missing
+    // handle just disables the feature (email/2FA/premium-skip) gracefully.
+    private Object dataSource;
+    private Method dsGetAuth;
+    private Method dsHasSession;
+    private Method dsUpdateEmail;
+    private Object playerCache;
+    private Method pcIsAuthenticatedByName;
+    private Object emailService;
+    private Method emailHasAllInfo;
+    private Method emailSendVerification;
+    private Method authIsPremium;
+    private Method authGetPremiumUuid;
+    private Method authGetEmail;
+    private Method authSetEmail;
+    private Method authGetTotpKey;
+    private Object totpAuthenticator;
+    private Method totpCheckCode;
+
     private volatile boolean sessionsEnabled;
     private volatile int sessionTimeoutMinutes;
     private volatile int minPasswordLength;
@@ -32,6 +57,7 @@ public class AuthenticationBridge {
     public AuthenticationBridge(Plugin plugin) {
         this.plugin = plugin;
         this.authMeApi = initializeApi();
+        initReflection();
         refreshAuthMeSettingsCache();
     }
 
@@ -44,6 +70,258 @@ public class AuthenticationBridge {
 
     public boolean isConnected() {
         return authMeApi != null;
+    }
+
+    /**
+     * Bind reflection handles into AuthMe internals (DataSource, PlayerCache,
+     * EmailService, TotpAuthenticator) for features the public AuthMeApi
+     * doesn't expose (email verify, 2FA, premium-skip, stored-email read).
+     * Mirrors AuthMeBia's AuthMe.initReflection() exactly. Each block is
+     * independently try/caught so a missing class in one area doesn't kill
+     * the others.
+     */
+    private void initReflection() {
+        if (authMeApi == null) {
+            return;
+        }
+
+        try {
+            Class<?> dsClass = Class.forName("fr.xephi.authme.datasource.DataSource");
+            Field dsField = authMeApi.getClass().getDeclaredField("dataSource");
+            dsField.setAccessible(true);
+            dataSource = dsField.get(authMeApi);
+            dsGetAuth = dsClass.getMethod("getAuth", String.class);
+            dsHasSession = dsClass.getMethod("hasSession", String.class);
+            dsUpdateEmail = dsClass.getMethod("updateEmail",
+                    Class.forName("fr.xephi.authme.data.auth.PlayerAuth"));
+            Class<?> authClass = Class.forName("fr.xephi.authme.data.auth.PlayerAuth");
+            authGetEmail = authClass.getMethod("getEmail");
+            authSetEmail = authClass.getMethod("setEmail", String.class);
+            authGetTotpKey = authClass.getMethod("getTotpKey");
+            try {
+                authIsPremium = authClass.getMethod("isPremium");
+                authGetPremiumUuid = authClass.getMethod("getPremiumUuid");
+            } catch (NoSuchMethodException e) {
+                // ponytail: premium fields are fork-specific; missing them only disables premium skip.
+                authIsPremium = null;
+                authGetPremiumUuid = null;
+            }
+        } catch (Throwable t) {
+            plugin.getLogger().info("AuthMe DataSource reflection unavailable; "
+                    + "premium skip, email, and 2FA features disabled (" + t + ")");
+            dataSource = null;
+        }
+
+        try {
+            Field pcField = authMeApi.getClass().getDeclaredField("playerCache");
+            pcField.setAccessible(true);
+            playerCache = pcField.get(authMeApi);
+            pcIsAuthenticatedByName = Class.forName("fr.xephi.authme.data.auth.PlayerCache")
+                    .getMethod("isAuthenticated", String.class);
+        } catch (Throwable t) {
+            playerCache = null;
+        }
+
+        Object injector = resolveInjector();
+        if (injector == null) {
+            return;
+        }
+        try {
+            Method getSingleton = injectorClass(injector).getMethod("getSingleton", Class.class);
+            Class<?> emailSvcClass = Class.forName("fr.xephi.authme.mail.EmailService");
+            emailService = getSingleton.invoke(injector, emailSvcClass);
+            emailHasAllInfo = emailSvcClass.getMethod("hasAllInformation");
+            try {
+                emailSendVerification = emailSvcClass.getMethod(
+                        "sendVerificationMail", String.class, String.class, String.class);
+            } catch (NoSuchMethodException e) {
+                // AuthMeReReloaded fork: extra <time /> tag argument, returns void.
+                emailSendVerification = emailSvcClass.getMethod("sendVerificationMail",
+                        String.class, String.class, String.class, String.class);
+            }
+        } catch (Throwable t) {
+            plugin.getLogger().info("AuthMe email reflection unavailable; email verification disabled (" + t + ")");
+            emailService = null;
+        }
+
+        try {
+            Method getSingleton = injectorClass(injector).getMethod("getSingleton", Class.class);
+            Class<?> totpClass = Class.forName("fr.xephi.authme.security.totp.TotpAuthenticator");
+            totpAuthenticator = getSingleton.invoke(injector, totpClass);
+            Class<?> playerAuthClass = Class.forName("fr.xephi.authme.data.auth.PlayerAuth");
+            totpCheckCode = totpClass.getMethod("checkCode", playerAuthClass, String.class);
+        } catch (Throwable t) {
+            plugin.getLogger().info("AuthMe TOTP reflection unavailable; 2FA dialog disabled (" + t + ")");
+            totpAuthenticator = null;
+        }
+    }
+
+    /** AuthMe builds may relocate the injector library under fr.xephi.authme.libs. */
+    private static Class<?> injectorClass(Object injector) throws ClassNotFoundException {
+        // AuthMe 6 loads the injector via plugin.yml libraries, invisible to dependents' loaders.
+        ClassLoader loader = injector.getClass().getClassLoader();
+        try {
+            return Class.forName("ch.jalu.injector.Injector", false, loader);
+        } catch (ClassNotFoundException e) {
+            return Class.forName("fr.xephi.authme.libs.ch.jalu.injector.Injector", false, loader);
+        }
+    }
+
+    /**
+     * Reach AuthMe's injector via api.getPlugin().injector — the verified path
+     * AuthMeBia uses to obtain EmailService/TotpAuthenticator singletons.
+     */
+    private Object resolveInjector() {
+        try {
+            Object authMePlugin = authMeApi.getClass().getMethod("getPlugin").invoke(authMeApi);
+            Field injField = authMePlugin.getClass().getDeclaredField("injector");
+            injField.setAccessible(true);
+            return injField.get(authMePlugin);
+        } catch (Throwable t) {
+            plugin.getLogger().info("AuthMe injector unreachable; email/TOTP features disabled (" + t + ")");
+            return null;
+        }
+    }
+
+    // ==================== Reflection-backed AuthMe internals ====================
+    // ponytail: all of these return null/false silently on reflection failure —
+    // callers treat null as "feature unavailable" and fall back to the plain
+    // login/register flow. No throwing into the dialog layer.
+
+    public boolean isEmailVerificationActive() {
+        if (emailService == null || emailHasAllInfo == null) {
+            return false;
+        }
+        try {
+            return (boolean) emailHasAllInfo.invoke(emailService);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean sendVerificationEmail(String name, String email, String code) {
+        if (emailService == null || emailSendVerification == null) {
+            return false;
+        }
+        try {
+            if (emailSendVerification.getParameterCount() == 4) {
+                // ponytail: void variant can't report SMTP failure; config completeness is the best signal.
+                if (emailHasAllInfo != null && !(boolean) emailHasAllInfo.invoke(emailService)) {
+                    return false;
+                }
+                String time = java.time.LocalDateTime.now()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                emailSendVerification.invoke(emailService, name, email, code, time);
+                return true;
+            }
+            return (boolean) emailSendVerification.invoke(emailService, name, email, code);
+        } catch (Exception e) {
+            plugin.getLogger().warning("sendVerificationMail failed for " + name + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    public String getStoredEmail(String name) {
+        if (dataSource == null || dsGetAuth == null || authGetEmail == null || name == null) {
+            return null;
+        }
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(Locale.ROOT));
+            if (auth == null) {
+                return null;
+            }
+            return (String) authGetEmail.invoke(auth);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public void storeEmail(String name, String email) {
+        if (dataSource == null || dsGetAuth == null || dsUpdateEmail == null || authSetEmail == null) {
+            return;
+        }
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(Locale.ROOT));
+            if (auth == null) {
+                return;
+            }
+            authSetEmail.invoke(auth, email);
+            dsUpdateEmail.invoke(dataSource, auth);
+        } catch (Exception e) {
+            plugin.getLogger().warning("storeEmail failed for " + name + ": " + e.getMessage());
+        }
+    }
+
+    public boolean hasTotpEnabled(String name) {
+        if (totpAuthenticator == null || dataSource == null || dsGetAuth == null
+                || authGetTotpKey == null || name == null) {
+            return false;
+        }
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(Locale.ROOT));
+            if (auth == null) {
+                return false;
+            }
+            String totpKey = (String) authGetTotpKey.invoke(auth);
+            return totpKey != null && !totpKey.isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean checkTotpCode(String name, String code) {
+        if (totpAuthenticator == null || dataSource == null || dsGetAuth == null
+                || totpCheckCode == null || name == null) {
+            return false;
+        }
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(Locale.ROOT));
+            if (auth == null) {
+                return false;
+            }
+            return (boolean) totpCheckCode.invoke(totpAuthenticator, auth, code);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean isPremiumSkip(UUID connectingUuid, String name) {
+        if (dataSource == null || dsGetAuth == null || authIsPremium == null || name == null) {
+            return false;
+        }
+        if (connectingUuid == null || connectingUuid.version() != 4) {
+            return false;
+        }
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(Locale.ROOT));
+            if (auth == null) {
+                return false;
+            }
+            if (!(boolean) authIsPremium.invoke(auth)) {
+                return false;
+            }
+            Object premiumUuid = authGetPremiumUuid.invoke(auth);
+            return connectingUuid.equals(premiumUuid);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Change a player's password by name (public AuthMeApi call, no reflection).
+     * Used by forgot-password recovery and admin-forced reset (F, L).
+     */
+    public boolean changePassword(String playerName, String newPassword) {
+        if (!isConnected()) {
+            return false;
+        }
+        try {
+            authMeApi.changePassword(playerName, newPassword);
+            return true;
+        } catch (Exception e) {
+            plugin.getLogger().warning("changePassword failed for " + playerName + ": " + e.getMessage());
+            return false;
+        }
     }
 
     public boolean isPlayerAuthenticated(Player player) {
@@ -468,7 +746,7 @@ public class AuthenticationBridge {
         }
     }
 
-    private boolean isValidEmail(String value) {
+    public boolean isValidEmail(String value) {
         return value != null && BASIC_EMAIL_PATTERN.matcher(value.trim()).matches();
     }
 

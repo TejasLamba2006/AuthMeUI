@@ -89,3 +89,4 @@ local.properties
 # Server test files
 server/
 run/
+.omc/

@@ -44,7 +44,7 @@ public class RegistrationDialogBuilder {
             contentSections.add(DialogBody.plainMessage(errorNotice));
         }
 
-        List<TextDialogInput> inputFields = createInputFields();
+        List<TextDialogInput> inputFields = createInputFields(player);
         List<ActionButton> actionButtons = buildActionButtons();
 
         DialogBase dialogBase = DialogBase.builder(settings.getRegisterTitle())
@@ -57,7 +57,7 @@ public class RegistrationDialogBuilder {
         return Dialog.create(builder -> {
             ((Builder) builder.empty())
                     .base(dialogBase)
-                    .type(DialogType.multiAction(actionButtons, null, settings.getButtonColumns()));
+                    .type(DialogType.multiAction(actionButtons, null, settings.getButtonColumns(player)));
         });
     }
 
@@ -75,9 +75,9 @@ public class RegistrationDialogBuilder {
         return content;
     }
 
-    private List<TextDialogInput> createInputFields() {
+    private List<TextDialogInput> createInputFields(Player player) {
         TextDialogInput passwordField = DialogInput.text(PASSWORD_INPUT_KEY, settings.getRegisterPasswordLabel())
-                .width(settings.getInputWidth())
+                .width(settings.getInputWidth(player))
                 .labelVisible(true)
                 .maxLength(MAX_PASSWORD_INPUT_LENGTH)
                 .initial("")
@@ -92,7 +92,7 @@ public class RegistrationDialogBuilder {
         TextDialogInput secondField = DialogInput.text(
                 CONFIRM_INPUT_KEY,
                 secondArgMode.usesEmail() ? settings.getRegisterEmailLabel() : settings.getRegisterConfirmLabel())
-                .width(settings.getInputWidth())
+                .width(settings.getInputWidth(player))
                 .labelVisible(true)
                 .maxLength(MAX_PASSWORD_INPUT_LENGTH)
                 .initial("")
