@@ -139,8 +139,13 @@ public class PlayerSessionListener implements Listener {
             // initial dialog, they closed it. Re-present on the reopen interval
             // unless the server allows escape-close (then leave them be).
             ticksSinceLastShow[0] += CHECK_INTERVAL_TICKS;
+            // ponytail: skip for Floodgate players — re-presenting restarts the flow
+            // (register -> rules page) and wipes typed input every 5s. Ceiling: a
+            // Bedrock player who closes the form must rejoin or use /authmeui show.
             if (ticksSinceLastShow[0] >= REOPEN_INTERVAL_TICKS
-                    && !plugin.getSettingsManager().canCloseWithEscape()) {
+                    && !plugin.getSettingsManager().canCloseWithEscape()
+                    && !com.github.TejasLamba2006.AuthMeUI.authentication.Floodgate
+                            .isFloodgatePlayer(player.getUniqueId())) {
                 dialogManager.presentAuthDialog(player, hasAccount);
                 ticksSinceLastShow[0] = 0;
             }

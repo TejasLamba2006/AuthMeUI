@@ -4,6 +4,14 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.5.0] - 2026-10-14
+
+### Fixes
+
+- **Bedrock (Geyser/Floodgate):** registration form no longer jumps back to the server rules page every few seconds, and typed text is no longer wiped. The re-open guard is skipped for Bedrock players.
+
+---
+
 ## [1.4.0] - 2026-10-08
 
 ### New features
