@@ -103,7 +103,7 @@ public class AuthenticationStateListener implements Listener {
 
         scheduleDialogPresentation(affectedPlayer, () -> {
             if (affectedPlayer != null && affectedPlayer.isOnline()) {
-                affectedPlayer.showDialog(dialogManager.createRulesDialog(affectedPlayer));
+                dialogManager.presentAuthDialog(affectedPlayer, false);
             }
         });
     }
@@ -114,8 +114,7 @@ public class AuthenticationStateListener implements Listener {
         Player affectedPlayer = Bukkit.getPlayerExact(targetName);
 
         if (affectedPlayer != null && affectedPlayer.isOnline()) {
-            scheduleDialogPresentation(affectedPlayer,
-                    () -> affectedPlayer.showDialog(dialogManager.createRulesDialog(affectedPlayer)));
+            scheduleDialogPresentation(affectedPlayer, () -> dialogManager.presentAuthDialog(affectedPlayer, false));
         }
     }
 
