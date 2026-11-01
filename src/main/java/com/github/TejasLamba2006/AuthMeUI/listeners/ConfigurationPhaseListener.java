@@ -184,7 +184,7 @@ public class ConfigurationPhaseListener implements Listener {
             if (settings.isRulesDialogEnabled()) {
                 audience.showDialog(dialogManager.createRulesDialogForAudience(playerName));
             } else {
-                audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName));
+                dialogManager.presentRegistrationDialogForAudience(audience, playerName);
             }
         }
 

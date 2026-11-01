@@ -549,6 +549,43 @@ public class AuthenticationBridge {
         }
     }
 
+    /**
+     * Register and force-login an in-game player using a numeric PIN/slider
+     * code, bypassing text min/max length validation (AuthMe's default
+     * minPasswordLength=5 would reject a 4-digit PIN). Mirrors AuthMeBia's
+     * {@code registerAndLoginNumeric}.
+     */
+    public RegistrationResult registerNumeric(Player player, String code) {
+        if (!isConnected()) {
+            return RegistrationResult.SERVICE_UNAVAILABLE;
+        }
+        String playerName = player.getName();
+        if (isPlayerRegistered(playerName)) {
+            return RegistrationResult.ALREADY_EXISTS;
+        }
+        if (code == null || code.isBlank()) {
+            return RegistrationResult.INVALID_PASSWORD;
+        }
+        return registerWithApi(player, playerName, code);
+    }
+
+    /**
+     * Register a config-phase player by name using a numeric PIN/slider code,
+     * bypassing text min/max length validation.
+     */
+    public RegistrationResult registerNumericByName(String playerName, String code) {
+        if (!isConnected()) {
+            return RegistrationResult.SERVICE_UNAVAILABLE;
+        }
+        if (isPlayerRegistered(playerName)) {
+            return RegistrationResult.ALREADY_EXISTS;
+        }
+        if (code == null || code.isBlank()) {
+            return RegistrationResult.INVALID_PASSWORD;
+        }
+        return registerByNameWithApi(playerName, code);
+    }
+
     public RegistrationResult attemptRegistration(Player player, String password, String secondArgument) {
         if (!isConnected()) {
             return RegistrationResult.SERVICE_UNAVAILABLE;

@@ -44,7 +44,8 @@ public class AuthenticationStateListener implements Listener {
 
         scheduleDialogPresentation(affectedPlayer, () -> {
             if (affectedPlayer.isOnline() && !authBridge.isPlayerAuthenticated(affectedPlayer)) {
-                affectedPlayer.showDialog(dialogManager.createLoginDialog(affectedPlayer));
+                boolean hasAccount = authBridge.isPlayerRegistered(affectedPlayer.getName());
+                dialogManager.presentAuthDialog(affectedPlayer, hasAccount);
             }
         });
     }
@@ -103,7 +104,7 @@ public class AuthenticationStateListener implements Listener {
 
         scheduleDialogPresentation(affectedPlayer, () -> {
             if (affectedPlayer != null && affectedPlayer.isOnline()) {
-                affectedPlayer.showDialog(dialogManager.createRulesDialog(affectedPlayer));
+                dialogManager.presentAuthDialog(affectedPlayer, false);
             }
         });
     }
@@ -115,7 +116,7 @@ public class AuthenticationStateListener implements Listener {
 
         if (affectedPlayer != null && affectedPlayer.isOnline()) {
             scheduleDialogPresentation(affectedPlayer,
-                    () -> affectedPlayer.showDialog(dialogManager.createRulesDialog(affectedPlayer)));
+                    () -> dialogManager.presentAuthDialog(affectedPlayer, false));
         }
     }
 

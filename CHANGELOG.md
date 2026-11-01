@@ -4,6 +4,15 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.5.2] - 2026-11-01
+
+### Fixes
+
+- **PIN & Slider registration:** unregistered players now use the PIN pad or slider when `auth-mode.type` is `pin` or `slider` (both post-join and configuration phase, including after accepting server rules), and confirming registers + logs them in without failing AuthMe's minimum password length check.
+- **PIN & Slider session cleanup:** reset progress dots and slider values after failed attempts, cancel/disconnect, and player quit so stale digits never carry over.
+
+---
+
 ## [1.5.1] - 2026-11-01
 
 ### Fixes

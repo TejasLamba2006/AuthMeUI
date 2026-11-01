@@ -93,12 +93,12 @@ public class AuthMeUICommand implements TabExecutor {
 
         switch (dialogType) {
             case "login" -> {
-                player.showDialog(dialogManager.createLoginDialog(player));
+                dialogManager.presentLoginInputDialog(player);
                 Component openedMsg = settings.getMessage("commands.dialog-opened", "<gray>Dialog opened.</gray>");
                 player.sendMessage(openedMsg);
             }
             case "register" -> {
-                player.showDialog(dialogManager.createRegistrationDialog(player));
+                dialogManager.presentRegisterInputDialog(player);
                 Component openedMsg = settings.getMessage("commands.dialog-opened", "<gray>Dialog opened.</gray>");
                 player.sendMessage(openedMsg);
             }

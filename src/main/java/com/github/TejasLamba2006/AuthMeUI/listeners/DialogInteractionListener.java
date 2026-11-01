@@ -18,6 +18,7 @@ import com.github.TejasLamba2006.AuthMeUI.dialogs.PinDialogBuilder;
 import com.github.TejasLamba2006.AuthMeUI.dialogs.RecoverDialogBuilder;
 import com.github.TejasLamba2006.AuthMeUI.dialogs.ScreenDismissStore;
 import com.github.TejasLamba2006.AuthMeUI.dialogs.TwoFactorDialogBuilder;
+import com.destroystokyo.paper.event.player.PlayerConnectionCloseEvent;
 import io.papermc.paper.connection.PlayerCommonConnection;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.connection.PlayerGameConnection;
@@ -34,6 +35,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.net.InetSocketAddress;
 import java.util.Map;
@@ -420,10 +422,12 @@ public class DialogInteractionListener implements Listener {
         }
 
         // Show registration dialog
-        audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName));
+        dialogManager.presentRegistrationDialogForAudience(audience, playerName);
     }
 
     private void handleConfigPhaseCancel(UUID uniqueId) {
+        pinSessions.remove(uniqueId);
+        sliderSessions.remove(uniqueId);
         if (configPhaseListener != null) {
             configPhaseListener.cancelAuthentication(uniqueId);
         }
@@ -477,10 +481,24 @@ public class DialogInteractionListener implements Listener {
 
     private void handlePinConfirm(Player player) {
         UUID uniqueId = player.getUniqueId();
-        StringBuilder session = pinSessions.remove(uniqueId);
+        int length = settings.getPinLength();
+        StringBuilder session = pinSessions.get(uniqueId);
         String code = session != null ? session.toString() : "";
-        if (code.isEmpty()) {
-            reShowAuthDialog(player, "login.password-empty", "<red>Please enter your password!</red>");
+        if (code.length() < length) {
+            int entered = code.length();
+            scheduleDialogReopen(player, () ->
+                    player.showDialog(dialogManager.createPinDialog(player, entered, null)));
+            return;
+        }
+        pinSessions.remove(uniqueId);
+        if (!authBridge.isPlayerRegistered(player.getName())) {
+            RegistrationResult regResult = authBridge.registerNumeric(player, code);
+            if (regResult == RegistrationResult.SUCCESS) {
+                scheduleRegistrationVerification(player);
+            } else {
+                reShowAuthDialog(player, "register.failed",
+                        "<red>Registration failed. Please try again.</red>");
+            }
             return;
         }
         checkLoginCode(player, code);
@@ -516,14 +534,24 @@ public class DialogInteractionListener implements Listener {
         UUID uniqueId = player.getUniqueId();
         int[] digits = sliderSessions.remove(uniqueId);
         if (digits == null) {
-            reShowAuthDialog(player, "login.password-empty", "<red>Please enter your password!</red>");
-            return;
+            digits = new int[settings.getSliderLength()];
         }
         StringBuilder sb = new StringBuilder(digits.length);
         for (int d : digits) {
             sb.append(d);
         }
-        checkLoginCode(player, sb.toString());
+        String code = sb.toString();
+        if (!authBridge.isPlayerRegistered(player.getName())) {
+            RegistrationResult regResult = authBridge.registerNumeric(player, code);
+            if (regResult == RegistrationResult.SUCCESS) {
+                scheduleRegistrationVerification(player);
+            } else {
+                reShowAuthDialog(player, "register.failed",
+                        "<red>Registration failed. Please try again.</red>");
+            }
+            return;
+        }
+        checkLoginCode(player, code);
     }
 
     // ---- Custom screens (J) ----
@@ -714,12 +742,25 @@ public class DialogInteractionListener implements Listener {
             UUID uniqueId,
             String playerName,
             Audience audience) {
-        StringBuilder session = pinSessions.remove(uniqueId);
+        int length = settings.getPinLength();
+        StringBuilder session = pinSessions.get(uniqueId);
         String code = session != null ? session.toString() : "";
-        if (code.isEmpty()) {
-            Component error = settings.getMessage("login.password-empty",
-                    "<red>Please enter your password!</red>");
-            audience.showDialog(dialogManager.createPinDialogForAudience(0, null));
+        if (code.length() < length) {
+            audience.showDialog(dialogManager.createPinDialogForAudience(code.length(), null));
+            return;
+        }
+        pinSessions.remove(uniqueId);
+        if (!authBridge.isPlayerRegistered(playerName)) {
+            RegistrationResult regResult = authBridge.registerNumericByName(playerName, code);
+            if (regResult == RegistrationResult.SUCCESS) {
+                if (configPhaseListener != null) {
+                    configPhaseListener.updateRegistrationStatus(uniqueId, true);
+                    configPhaseListener.completeAuthentication(uniqueId, true);
+                }
+            } else {
+                reShowAuthDialogConfigPhase(uniqueId, playerName, audience, "register.failed",
+                        "<red>Registration failed. Please try again.</red>");
+            }
             return;
         }
         checkLoginCodeConfigPhase(connection, uniqueId, playerName, audience, code);
@@ -755,14 +796,27 @@ public class DialogInteractionListener implements Listener {
             Audience audience) {
         int[] digits = sliderSessions.remove(uniqueId);
         if (digits == null) {
-            audience.showDialog(dialogManager.createSliderDialogForAudience(new int[settings.getSliderLength()], null));
-            return;
+            digits = new int[settings.getSliderLength()];
         }
         StringBuilder sb = new StringBuilder(digits.length);
         for (int d : digits) {
             sb.append(d);
         }
-        checkLoginCodeConfigPhase(connection, uniqueId, playerName, audience, sb.toString());
+        String code = sb.toString();
+        if (!authBridge.isPlayerRegistered(playerName)) {
+            RegistrationResult regResult = authBridge.registerNumericByName(playerName, code);
+            if (regResult == RegistrationResult.SUCCESS) {
+                if (configPhaseListener != null) {
+                    configPhaseListener.updateRegistrationStatus(uniqueId, true);
+                    configPhaseListener.completeAuthentication(uniqueId, true);
+                }
+            } else {
+                reShowAuthDialogConfigPhase(uniqueId, playerName, audience, "register.failed",
+                        "<red>Registration failed. Please try again.</red>");
+            }
+            return;
+        }
+        checkLoginCodeConfigPhase(connection, uniqueId, playerName, audience, code);
     }
 
     /**
@@ -856,13 +910,12 @@ public class DialogInteractionListener implements Listener {
             String defaultMessage) {
         SettingsManager.AuthMode mode = settings.getAuthMode();
         if (mode == SettingsManager.AuthMode.PIN) {
-            int entered = pinSessions.containsKey(uniqueId)
-                    ? pinSessions.get(uniqueId).length() : 0;
             pinSessions.remove(uniqueId);
-            audience.showDialog(dialogManager.createPinDialogForAudience(entered, defaultMessage));
+            audience.showDialog(dialogManager.createPinDialogForAudience(0, defaultMessage));
         } else if (mode == SettingsManager.AuthMode.SLIDER) {
-            int[] digits = sliderSessions.getOrDefault(uniqueId, new int[settings.getSliderLength()]);
-            audience.showDialog(dialogManager.createSliderDialogForAudience(digits, defaultMessage));
+            sliderSessions.remove(uniqueId);
+            audience.showDialog(dialogManager.createSliderDialogForAudience(
+                    new int[settings.getSliderLength()], defaultMessage));
         } else {
             Component error = settings.getMessage(messageKey, defaultMessage);
             audience.showDialog(dialogManager.createLoginDialogForAudience(playerName, error));
@@ -969,13 +1022,12 @@ public class DialogInteractionListener implements Listener {
             }
             SettingsManager.AuthMode mode = settings.getAuthMode();
             if (mode == SettingsManager.AuthMode.PIN) {
-                int entered = pinSessions.containsKey(player.getUniqueId())
-                        ? pinSessions.get(player.getUniqueId()).length() : 0;
                 pinSessions.remove(player.getUniqueId());
-                player.showDialog(dialogManager.createPinDialog(player, entered, defaultMessage));
+                player.showDialog(dialogManager.createPinDialog(player, 0, defaultMessage));
             } else if (mode == SettingsManager.AuthMode.SLIDER) {
-                int[] digits = sliderSessions.getOrDefault(player.getUniqueId(), new int[settings.getSliderLength()]);
-                player.showDialog(dialogManager.createSliderDialog(player, digits, defaultMessage));
+                sliderSessions.remove(player.getUniqueId());
+                player.showDialog(dialogManager.createSliderDialog(
+                        player, new int[settings.getSliderLength()], defaultMessage));
             } else {
                 player.showDialog(dialogManager.createLoginDialog(player, error));
             }
@@ -983,6 +1035,8 @@ public class DialogInteractionListener implements Listener {
     }
 
     private void handleLoginCancel(Player player) {
+        pinSessions.remove(player.getUniqueId());
+        sliderSessions.remove(player.getUniqueId());
         if (!player.isOnline()) {
             return;
         }
@@ -1057,7 +1111,7 @@ public class DialogInteractionListener implements Listener {
             }
         }
 
-        scheduleDialogReopen(player, () -> player.showDialog(dialogManager.createRegistrationDialog(player)));
+        scheduleDialogReopen(player, () -> dialogManager.presentRegisterInputDialog(player));
     }
 
     private void handleSupportAction(Player player) {
@@ -1116,7 +1170,7 @@ public class DialogInteractionListener implements Listener {
             // Route to the real login dialog now that the player is verified human.
             scheduleDialogReopen(player, () -> {
                 if (!authBridge.isPlayerAuthenticated(player)) {
-                    player.showDialog(dialogManager.createLoginDialog(player));
+                    dialogManager.presentLoginInputDialog(player);
                 }
             });
         } else {
@@ -1144,7 +1198,7 @@ public class DialogInteractionListener implements Listener {
             }
             captcha.clearCode(uniqueId);
             // Proceed to the real login dialog for config phase.
-            audience.showDialog(dialogManager.createLoginDialogForAudience(playerName));
+            dialogManager.presentLoginDialogForAudience(audience, playerName);
         } else {
             Component error = settings.getMessage("captcha.incorrect",
                     "<red>Incorrect code. Please try again.</red>");
@@ -1332,7 +1386,7 @@ public class DialogInteractionListener implements Listener {
         forgotSessions.remove(player.getUniqueId());
         scheduleDialogReopen(player, () -> {
             if (!authBridge.isPlayerAuthenticated(player)) {
-                player.showDialog(dialogManager.createLoginDialog(player));
+                dialogManager.presentLoginInputDialog(player);
             }
         });
     }
@@ -1444,7 +1498,7 @@ public class DialogInteractionListener implements Listener {
                         // already authenticated via the auto-login path. Nothing
                         // further to do.
                     }
-                    case FORGOT -> player.showDialog(dialogManager.createLoginDialog(player));
+                    case FORGOT -> dialogManager.presentLoginInputDialog(player);
                 }
             }, null);
         });
@@ -1478,7 +1532,7 @@ public class DialogInteractionListener implements Listener {
     }
 
     private void handleConfigPhaseForgotBack(Audience audience, String playerName) {
-        audience.showDialog(dialogManager.createLoginDialogForAudience(playerName));
+        dialogManager.presentLoginDialogForAudience(audience, playerName);
     }
 
     private void handleConfigPhaseForgotVerify(
@@ -1578,8 +1632,7 @@ public class DialogInteractionListener implements Listener {
                             configPhaseListener.completeAuthentication(uniqueId, true);
                         }
                     }
-                    case FORGOT -> audience.showDialog(
-                            dialogManager.createLoginDialogForAudience(playerName));
+                    case FORGOT -> dialogManager.presentLoginDialogForAudience(audience, playerName);
                 }
             });
         });
@@ -1872,5 +1925,27 @@ public class DialogInteractionListener implements Listener {
             return null;
         }
         return configPhaseListener.getConnectionIps();
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        clearPlayerSessions(event.getPlayer().getUniqueId());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onConnectionClose(PlayerConnectionCloseEvent event) {
+        UUID uniqueId = event.getPlayerUniqueId();
+        if (uniqueId != null) {
+            clearPlayerSessions(uniqueId);
+        }
+    }
+
+    private void clearPlayerSessions(UUID uniqueId) {
+        pinSessions.remove(uniqueId);
+        sliderSessions.remove(uniqueId);
+        forgotSessions.remove(uniqueId);
+        playerTotpTries.remove(uniqueId);
+        playerLoginFailures.remove(uniqueId);
+        dialogManager.clearRecoverMode(uniqueId);
     }
 }

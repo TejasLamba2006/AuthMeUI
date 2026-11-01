@@ -128,24 +128,44 @@ public class DialogManager {
                 String code = captcha.generateFor(player.getUniqueId(), settings.getCaptchaCodeLength());
                 player.showDialog(createCaptchaDialog(player, code, null));
             } else {
-                // ponytail: PIN/Slider modes replace the text login dialog for
-                // registered players (G+H). Registration always uses a password
-                // text field, so only the login path branches on auth-mode.
-                SettingsManager.AuthMode mode = settings.getAuthMode();
-                if (mode == SettingsManager.AuthMode.PIN) {
-                    player.showDialog(createPinDialog(player, 0, null));
-                } else if (mode == SettingsManager.AuthMode.SLIDER) {
-                    player.showDialog(createSliderDialog(player, new int[settings.getSliderLength()], null));
-                } else {
-                    player.showDialog(createLoginDialog(player));
-                }
+                presentLoginInputDialog(player);
             }
         } else {
             if (settings.isRulesDialogEnabled()) {
                 player.showDialog(createRulesDialog(player));
             } else {
-                player.showDialog(createRegistrationDialog(player));
+                presentRegisterInputDialog(player);
             }
+        }
+    }
+
+    /**
+     * Present the login input dialog (text, PIN, or slider) to an in-game player.
+     */
+    public void presentLoginInputDialog(Player player) {
+        SettingsManager.AuthMode mode = settings.getAuthMode();
+        if (mode == SettingsManager.AuthMode.PIN) {
+            player.showDialog(createPinDialog(player, 0, null));
+        } else if (mode == SettingsManager.AuthMode.SLIDER) {
+            player.showDialog(createSliderDialog(player, new int[settings.getSliderLength()], null));
+        } else {
+            player.showDialog(createLoginDialog(player));
+        }
+    }
+
+    /**
+     * Present the registration input dialog (text, PIN, or slider) to an in-game player.
+     * Mirrors AuthMeBia's {@code Register.showRegisterIngame}, which routes PIN/slider
+     * modes to the numeric input dialogs instead of a text password form.
+     */
+    public void presentRegisterInputDialog(Player player) {
+        SettingsManager.AuthMode mode = settings.getAuthMode();
+        if (mode == SettingsManager.AuthMode.PIN) {
+            player.showDialog(createPinDialog(player, 0, null));
+        } else if (mode == SettingsManager.AuthMode.SLIDER) {
+            player.showDialog(createSliderDialog(player, new int[settings.getSliderLength()], null));
+        } else {
+            player.showDialog(createRegistrationDialog(player));
         }
     }
 
@@ -218,6 +238,21 @@ public class DialogManager {
             audience.showDialog(createSliderDialogForAudience(new int[settings.getSliderLength()], null));
         } else {
             audience.showDialog(createLoginDialogForAudience(playerName));
+        }
+    }
+
+    /**
+     * Present the appropriate registration dialog to a config-phase audience,
+     * gated on auth-mode (text / PIN / slider).
+     */
+    public void presentRegistrationDialogForAudience(Audience audience, String playerName) {
+        SettingsManager.AuthMode mode = settings.getAuthMode();
+        if (mode == SettingsManager.AuthMode.PIN) {
+            audience.showDialog(createPinDialogForAudience(0, null));
+        } else if (mode == SettingsManager.AuthMode.SLIDER) {
+            audience.showDialog(createSliderDialogForAudience(new int[settings.getSliderLength()], null));
+        } else {
+            audience.showDialog(createRegistrationDialogForAudience(playerName));
         }
     }
 
