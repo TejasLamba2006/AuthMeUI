@@ -4,6 +4,14 @@ All notable changes to AuthMeUI will be documented in this file.
 
 ---
 
+## [1.5.1] - 2026-11-01
+
+### Fixes
+
+- **All players (Java & Bedrock):** removed the 5-second post-join dialog reopen loop that bounced players from the registration, forgot-password, or PIN/slider screens back to the initial rules/login screen and wiped typed input.
+
+---
+
 ## [1.5.0] - 2026-10-14
 
 ### Fixes
