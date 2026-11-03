@@ -334,7 +334,8 @@ public class DialogInteractionListener implements Listener {
             return;
         }
 
-        RegistrationResult result = authBridge.attemptRegistrationByName(playerName, enteredPassword, secondArgument);
+        RegistrationResult result = authBridge.attemptRegistrationByName(
+                playerName, getConfigPhaseIp(uniqueId), enteredPassword, secondArgument);
 
         switch (result) {
             case SUCCESS -> {
@@ -394,6 +395,11 @@ public class DialogInteractionListener implements Listener {
             case INVALID_PASSWORD -> {
                 Component error = settings.getMessage("register.password-invalid",
                         "<red>Invalid password format. Please try again.</red>");
+                audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
+            }
+            case MAX_REGISTRATIONS_PER_IP -> {
+                Component error = settings.getMessage("register.max-per-ip",
+                        "<red>You have reached the maximum number of accounts for your connection.</red>");
                 audience.showDialog(dialogManager.createRegistrationDialogForAudience(playerName, error));
             }
             default -> {
@@ -495,6 +501,9 @@ public class DialogInteractionListener implements Listener {
             RegistrationResult regResult = authBridge.registerNumeric(player, code);
             if (regResult == RegistrationResult.SUCCESS) {
                 scheduleRegistrationVerification(player);
+            } else if (regResult == RegistrationResult.MAX_REGISTRATIONS_PER_IP) {
+                reShowAuthDialog(player, "register.max-per-ip",
+                        "<red>You have reached the maximum number of accounts for your connection.</red>");
             } else {
                 reShowAuthDialog(player, "register.failed",
                         "<red>Registration failed. Please try again.</red>");
@@ -545,6 +554,9 @@ public class DialogInteractionListener implements Listener {
             RegistrationResult regResult = authBridge.registerNumeric(player, code);
             if (regResult == RegistrationResult.SUCCESS) {
                 scheduleRegistrationVerification(player);
+            } else if (regResult == RegistrationResult.MAX_REGISTRATIONS_PER_IP) {
+                reShowAuthDialog(player, "register.max-per-ip",
+                        "<red>You have reached the maximum number of accounts for your connection.</red>");
             } else {
                 reShowAuthDialog(player, "register.failed",
                         "<red>Registration failed. Please try again.</red>");
@@ -751,12 +763,16 @@ public class DialogInteractionListener implements Listener {
         }
         pinSessions.remove(uniqueId);
         if (!authBridge.isPlayerRegistered(playerName)) {
-            RegistrationResult regResult = authBridge.registerNumericByName(playerName, code);
+            RegistrationResult regResult = authBridge.registerNumericByName(
+                    playerName, getConfigPhaseIp(uniqueId), code);
             if (regResult == RegistrationResult.SUCCESS) {
                 if (configPhaseListener != null) {
                     configPhaseListener.updateRegistrationStatus(uniqueId, true);
                     configPhaseListener.completeAuthentication(uniqueId, true);
                 }
+            } else if (regResult == RegistrationResult.MAX_REGISTRATIONS_PER_IP) {
+                reShowAuthDialogConfigPhase(uniqueId, playerName, audience, "register.max-per-ip",
+                        "<red>You have reached the maximum number of accounts for your connection.</red>");
             } else {
                 reShowAuthDialogConfigPhase(uniqueId, playerName, audience, "register.failed",
                         "<red>Registration failed. Please try again.</red>");
@@ -804,12 +820,16 @@ public class DialogInteractionListener implements Listener {
         }
         String code = sb.toString();
         if (!authBridge.isPlayerRegistered(playerName)) {
-            RegistrationResult regResult = authBridge.registerNumericByName(playerName, code);
+            RegistrationResult regResult = authBridge.registerNumericByName(
+                    playerName, getConfigPhaseIp(uniqueId), code);
             if (regResult == RegistrationResult.SUCCESS) {
                 if (configPhaseListener != null) {
                     configPhaseListener.updateRegistrationStatus(uniqueId, true);
                     configPhaseListener.completeAuthentication(uniqueId, true);
                 }
+            } else if (regResult == RegistrationResult.MAX_REGISTRATIONS_PER_IP) {
+                reShowAuthDialogConfigPhase(uniqueId, playerName, audience, "register.max-per-ip",
+                        "<red>You have reached the maximum number of accounts for your connection.</red>");
             } else {
                 reShowAuthDialogConfigPhase(uniqueId, playerName, audience, "register.failed",
                         "<red>Registration failed. Please try again.</red>");
@@ -1092,6 +1112,8 @@ public class DialogInteractionListener implements Listener {
                             : "<red>Registration mode is not supported right now. Please contact staff.</red>");
             case INVALID_PASSWORD -> displayRegistrationWithError(player, "register.password-invalid",
                     "<red>Invalid password format. Please try again.</red>");
+            case MAX_REGISTRATIONS_PER_IP -> displayRegistrationWithError(player, "register.max-per-ip",
+                    "<red>You have reached the maximum number of accounts for your connection.</red>");
             default -> displayRegistrationWithError(player, "register.failed",
                     "<red>Registration failed. Please try again.</red>");
         }
@@ -1925,6 +1947,11 @@ public class DialogInteractionListener implements Listener {
             return null;
         }
         return configPhaseListener.getConnectionIps();
+    }
+
+    private String getConfigPhaseIp(UUID uniqueId) {
+        Map<UUID, String> ips = getConfigPhaseIps();
+        return ips == null ? null : ips.get(uniqueId);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
