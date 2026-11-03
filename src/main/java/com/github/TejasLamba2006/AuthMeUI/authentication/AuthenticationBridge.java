@@ -7,6 +7,9 @@ import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
@@ -20,6 +23,9 @@ public class AuthenticationBridge {
     private static final int DEFAULT_MIN_PASSWORD_LENGTH = 5;
     private static final int DEFAULT_MAX_PASSWORD_LENGTH = 30;
     private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 10;
+    // AuthMe's own default for settings.restrictions.maxRegPerIp.
+    private static final int DEFAULT_MAX_REGISTRATIONS_PER_IP = 1;
+    private static final String ALLOW_MULTIPLE_ACCOUNTS_PERMISSION = "authme.allowmultipleaccounts";
     private static final RegistrationSecondArgMode DEFAULT_REGISTRATION_SECOND_ARG_MODE = RegistrationSecondArgMode.CONFIRMATION;
     private static final Pattern BASIC_EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
@@ -52,6 +58,7 @@ public class AuthenticationBridge {
     private volatile int sessionTimeoutMinutes;
     private volatile int minPasswordLength;
     private volatile int maxPasswordLength;
+    private volatile int maxRegistrationsPerIp;
     private volatile RegistrationSecondArgMode registrationSecondArgMode;
 
     public AuthenticationBridge(Plugin plugin) {
@@ -345,6 +352,7 @@ public class AuthenticationBridge {
         int cachedSessionTimeoutMinutes = DEFAULT_SESSION_TIMEOUT_MINUTES;
         int cachedMinPasswordLength = DEFAULT_MIN_PASSWORD_LENGTH;
         int cachedMaxPasswordLength = DEFAULT_MAX_PASSWORD_LENGTH;
+        int cachedMaxRegistrationsPerIp = DEFAULT_MAX_REGISTRATIONS_PER_IP;
         RegistrationSecondArgMode cachedRegistrationSecondArgMode = DEFAULT_REGISTRATION_SECOND_ARG_MODE;
 
         Plugin authMe = plugin.getServer().getPluginManager().getPlugin("AuthMe");
@@ -370,6 +378,11 @@ public class AuthenticationBridge {
                 "settings.security.passwordMaxLength",
                 "security.passwordMaxLength",
                 DEFAULT_MAX_PASSWORD_LENGTH);
+            cachedMaxRegistrationsPerIp = readIntWithFallback(
+                authConfig,
+                "settings.restrictions.maxRegPerIp",
+                "restrictions.maxRegPerIp",
+                DEFAULT_MAX_REGISTRATIONS_PER_IP);
             String secondArgRaw = readStringWithFallback(
                 authConfig,
                 "settings.registration.secondArg",
@@ -382,6 +395,7 @@ public class AuthenticationBridge {
         this.sessionTimeoutMinutes = cachedSessionTimeoutMinutes;
         this.minPasswordLength = cachedMinPasswordLength;
         this.maxPasswordLength = cachedMaxPasswordLength;
+        this.maxRegistrationsPerIp = cachedMaxRegistrationsPerIp;
         this.registrationSecondArgMode = cachedRegistrationSecondArgMode;
     }
 
@@ -566,6 +580,9 @@ public class AuthenticationBridge {
         if (code == null || code.isBlank()) {
             return RegistrationResult.INVALID_PASSWORD;
         }
+        if (isIpRegistrationLimitReached(player)) {
+            return RegistrationResult.MAX_REGISTRATIONS_PER_IP;
+        }
         return registerWithApi(player, playerName, code);
     }
 
@@ -573,7 +590,7 @@ public class AuthenticationBridge {
      * Register a config-phase player by name using a numeric PIN/slider code,
      * bypassing text min/max length validation.
      */
-    public RegistrationResult registerNumericByName(String playerName, String code) {
+    public RegistrationResult registerNumericByName(String playerName, String ipAddress, String code) {
         if (!isConnected()) {
             return RegistrationResult.SERVICE_UNAVAILABLE;
         }
@@ -582,6 +599,9 @@ public class AuthenticationBridge {
         }
         if (code == null || code.isBlank()) {
             return RegistrationResult.INVALID_PASSWORD;
+        }
+        if (isIpRegistrationLimitReached(ipAddress, false)) {
+            return RegistrationResult.MAX_REGISTRATIONS_PER_IP;
         }
         return registerByNameWithApi(playerName, code);
     }
@@ -597,6 +617,10 @@ public class AuthenticationBridge {
             return validationResult;
         }
 
+        if (isIpRegistrationLimitReached(player)) {
+            return RegistrationResult.MAX_REGISTRATIONS_PER_IP;
+        }
+
         return resolveInGameRegistrationResult(
                 player,
                 playerName,
@@ -609,11 +633,13 @@ public class AuthenticationBridge {
      * This registers the player without requiring a Player object.
      *
      * @param playerName     the player's name
+     * @param ipAddress      the connecting IP, used for AuthMe's maxRegPerIp limit
      * @param password       the password to register with
      * @param secondArgument the configured second argument for registration
      * @return the registration result
      */
-    public RegistrationResult attemptRegistrationByName(String playerName, String password, String secondArgument) {
+    public RegistrationResult attemptRegistrationByName(String playerName, String ipAddress, String password,
+            String secondArgument) {
         if (!isConnected()) {
             return RegistrationResult.SERVICE_UNAVAILABLE;
         }
@@ -623,10 +649,58 @@ public class AuthenticationBridge {
             return validationResult;
         }
 
+        // No Player exists yet in the configuration phase, so the
+        // authme.allowmultipleaccounts bypass permission can't be checked here.
+        if (isIpRegistrationLimitReached(ipAddress, false)) {
+            return RegistrationResult.MAX_REGISTRATIONS_PER_IP;
+        }
+
         return resolveConfigurationPhaseRegistrationResult(
                 playerName,
                 password,
                 normalizeSecondArgument(secondArgument));
+    }
+
+    /**
+     * Mirrors AuthMe's own /register check ({@code settings.restrictions.maxRegPerIp}).
+     * AuthMe skips that check for API registrations ({@code forceRegister},
+     * {@code registerPlayer}), so AuthMeUI has to enforce it before calling them.
+     */
+    private boolean isIpRegistrationLimitReached(Player player) {
+        InetSocketAddress address = player.getAddress();
+        String ip = address != null && address.getAddress() != null
+                ? address.getAddress().getHostAddress()
+                : null;
+        return isIpRegistrationLimitReached(ip, player.hasPermission(ALLOW_MULTIPLE_ACCOUNTS_PERMISSION));
+    }
+
+    private boolean isIpRegistrationLimitReached(String ipAddress, boolean canRegisterMultipleAccounts) {
+        int limit = maxRegistrationsPerIp;
+        if (!isIpLimitApplicable(limit, ipAddress, canRegisterMultipleAccounts) || isLoopbackAddress(ipAddress)) {
+            return false;
+        }
+        try {
+            return isAtIpLimit(limit, authMeApi.getNamesByIp(ipAddress).size());
+        } catch (Exception ex) {
+            plugin.getLogger().log(Level.WARNING, ex, () -> "Could not count accounts for IP " + ipAddress);
+            return false;
+        }
+    }
+
+    static boolean isIpLimitApplicable(int limit, String ipAddress, boolean canRegisterMultipleAccounts) {
+        return limit > 0 && ipAddress != null && !ipAddress.isBlank() && !canRegisterMultipleAccounts;
+    }
+
+    static boolean isAtIpLimit(int limit, int existingAccounts) {
+        return existingAccounts >= limit;
+    }
+
+    private static boolean isLoopbackAddress(String ipAddress) {
+        try {
+            return InetAddress.getByName(ipAddress).isLoopbackAddress();
+        } catch (UnknownHostException ex) {
+            return false;
+        }
     }
 
     private RegistrationResult validateRegistrationInput(String playerName, String password) {
@@ -807,6 +881,7 @@ public class AuthenticationBridge {
         EMAIL_INVALID,
         UNSUPPORTED_IN_CONFIGURATION_PHASE,
         INVALID_PASSWORD,
+        MAX_REGISTRATIONS_PER_IP,
         SERVICE_UNAVAILABLE,
         ERROR
     }

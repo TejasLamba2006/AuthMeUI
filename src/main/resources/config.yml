@@ -282,6 +282,7 @@ messages:
     password-too-short: "<red>Password must be at least <white>%min%</white> characters!</red>"
     password-too-long: "<red>Password cannot exceed <white>%max%</white> characters!</red>"
     password-invalid: "<red>Invalid password format. Please try again.</red>"
+    max-per-ip: "<red>You have reached the maximum number of accounts for your connection.</red>"
     already-registered: "<yellow>You already have an account. Please login instead!</yellow>"
     failed: "<red>Registration failed. Please try again.</red>"
     success: "<green>Account created successfully! Welcome!</green>"
