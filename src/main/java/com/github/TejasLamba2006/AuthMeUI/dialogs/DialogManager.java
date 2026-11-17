@@ -397,6 +397,16 @@ public class DialogManager {
         return recoverMode.getOrDefault(uuid, RecoverMode.FORGOT);
     }
 
+    /**
+     * The recover mode explicitly granted by the server (ADMIN_RESET or
+     * PREMIUM_SET), or {@code null} when none was granted. Unlike
+     * {@link #getRecoverMode}, this never defaults to FORGOT, so it can be
+     * used for authorization decisions.
+     */
+    public RecoverMode getExplicitRecoverMode(java.util.UUID uuid) {
+        return recoverMode.get(uuid);
+    }
+
     public void clearRecoverMode(java.util.UUID uuid) {
         recoverMode.remove(uuid);
     }
