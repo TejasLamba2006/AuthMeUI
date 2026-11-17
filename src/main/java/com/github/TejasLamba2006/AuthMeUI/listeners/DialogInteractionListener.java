@@ -73,6 +73,15 @@ public class DialogInteractionListener implements Listener {
     // code counter between dialog clicks.
     private final Map<UUID, ForgotPasswordSession> forgotSessions = new ConcurrentHashMap<>();
 
+    // Players who just entered a correct forgot-password email code, mapped
+    // to the time (millis) the grant expires. RECOVER_SUBMIT is a plain
+    // custom-click action that any client can send at any time, so the
+    // recover handlers must only change a password when the server itself
+    // granted it: a verified code here, or an explicit ADMIN_RESET /
+    // PREMIUM_SET mode in DialogManager.
+    private static final long RECOVER_GRANT_TTL_MILLIS = 10L * 60L * 1000L;
+    private final Map<UUID, Long> verifiedRecoveries = new ConcurrentHashMap<>();
+
     // ponytail: PIN/Slider input-mode session state (G+H). PIN keeps a
     // StringBuilder of entered digits; Slider keeps an int[] of per-slot
     // digits. Both persist between dialog re-renders (event-driven analog
@@ -1414,9 +1423,10 @@ public class DialogInteractionListener implements Listener {
             return;
         }
 
-        // Code verified — clear IP failures, drop session, show recover.
+        // Code verified — clear IP failures, drop session, grant recovery, show recover.
         clearIpFailures(player);
         forgotSessions.remove(uniqueId);
+        grantVerifiedRecovery(uniqueId);
         scheduleDialogReopen(player, () ->
                 player.showDialog(dialogManager.createRecoverDialog(player, false)));
     }
@@ -1440,9 +1450,41 @@ public class DialogInteractionListener implements Listener {
         sendForgotCodeAndShowVerify(uniqueId, player.getName(), session.email, player, null);
     }
 
+    private void grantVerifiedRecovery(UUID uniqueId) {
+        verifiedRecoveries.put(uniqueId, System.currentTimeMillis() + RECOVER_GRANT_TTL_MILLIS);
+    }
+
+    /**
+     * Returns the recover mode this player is currently authorized for, or
+     * {@code null} if the server never granted a password change. Never
+     * falls back to FORGOT: that requires a verified email code.
+     */
+    private DialogManager.RecoverMode authorizedRecoverMode(UUID uniqueId) {
+        DialogManager.RecoverMode explicit = dialogManager.getExplicitRecoverMode(uniqueId);
+        if (explicit != null) {
+            return explicit;
+        }
+        Long expiresAt = verifiedRecoveries.get(uniqueId);
+        if (expiresAt != null && expiresAt > System.currentTimeMillis()) {
+            return DialogManager.RecoverMode.FORGOT;
+        }
+        verifiedRecoveries.remove(uniqueId);
+        return null;
+    }
+
+    private void logUnauthorizedRecover(String playerName) {
+        plugin.getLogger().warning("Ignored password recovery submission for " + playerName
+                + ": no verified recovery code, admin reset, or premium password-set pending.");
+    }
+
     private void handleRecoverSubmit(Player player, DialogResponseView response) {
         UUID uniqueId = player.getUniqueId();
         String playerName = player.getName();
+        DialogManager.RecoverMode mode = authorizedRecoverMode(uniqueId);
+        if (mode == null) {
+            logUnauthorizedRecover(playerName);
+            return;
+        }
         String newPass = response.getText(RecoverDialogBuilder.NEW_PASSWORD_KEY);
         String confirm = response.getText(RecoverDialogBuilder.CONFIRM_PASSWORD_KEY);
 
@@ -1459,10 +1501,9 @@ public class DialogInteractionListener implements Listener {
         // ponytail: changePassword is a DB write — run async, then branch on
         // the recover mode on the main thread. Mirrors AuthMeBia's runAsync +
         // runOnMain. In-game path uses the Folia-aware player scheduler.
-        // The mode is owned by DialogManager (which set it when routing into
-        // the recover flow); read + clear it here so the handler stays stateless.
-        DialogManager.RecoverMode mode = dialogManager.getRecoverMode(uniqueId);
+        // The grant was checked above; consume it now so it is single-use.
         dialogManager.clearRecoverMode(uniqueId);
+        verifiedRecoveries.remove(uniqueId);
         final DialogManager.RecoverMode finalMode = mode;
         final String password = newPass;
         plugin.getServer().getAsyncScheduler().runNow(plugin, asyncTask1 -> {
@@ -1560,6 +1601,7 @@ public class DialogInteractionListener implements Listener {
 
         clearIpFailures(uniqueId);
         forgotSessions.remove(uniqueId);
+        grantVerifiedRecovery(uniqueId);
         audience.showDialog(dialogManager.createRecoverDialogForAudience(false));
     }
 
@@ -1583,6 +1625,11 @@ public class DialogInteractionListener implements Listener {
     private void handleConfigPhaseRecoverSubmit(
             PlayerConfigurationConnection connection, UUID uniqueId, String playerName,
             Audience audience, DialogResponseView response) {
+        DialogManager.RecoverMode mode = authorizedRecoverMode(uniqueId);
+        if (mode == null) {
+            logUnauthorizedRecover(playerName);
+            return;
+        }
         String newPass = response.getText(RecoverDialogBuilder.NEW_PASSWORD_KEY);
         String confirm = response.getText(RecoverDialogBuilder.CONFIRM_PASSWORD_KEY);
 
@@ -1596,8 +1643,9 @@ public class DialogInteractionListener implements Listener {
         }
 
         // ponytail: K+L — branch on recover mode, same as the in-game path.
-        DialogManager.RecoverMode mode = dialogManager.getRecoverMode(uniqueId);
+        // The grant was checked above; consume it now so it is single-use.
         dialogManager.clearRecoverMode(uniqueId);
+        verifiedRecoveries.remove(uniqueId);
         final DialogManager.RecoverMode finalMode = mode;
         final String password = newPass;
         plugin.getServer().getAsyncScheduler().runNow(plugin, asyncTask3 -> {
@@ -1944,6 +1992,7 @@ public class DialogInteractionListener implements Listener {
         pinSessions.remove(uniqueId);
         sliderSessions.remove(uniqueId);
         forgotSessions.remove(uniqueId);
+        verifiedRecoveries.remove(uniqueId);
         playerTotpTries.remove(uniqueId);
         playerLoginFailures.remove(uniqueId);
         dialogManager.clearRecoverMode(uniqueId);
